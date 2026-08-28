@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const { runQuery, getAll } = require('../database');
+const { runQuery, getAll, getOne } = require('../database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'borwell_secret';
 
@@ -24,16 +24,20 @@ router.get('/', auth, (req, res) => {
 
 router.post('/', auth, (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
-  const { date, machine_id, customer_name, location, work_description, depth_feet, status, amount } = req.body;
-  const result = runQuery('INSERT INTO jobs (date, machine_id, customer_name, location, work_description, depth_feet, status, amount, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [date, machine_id, customer_name, location, work_description, depth_feet, status || 'completed', amount || 0, req.user.id]);
+  const { date, machine_id, customer_name, location, work_description, depth_feet, status, amount, received } = req.body;
+  const rec = received || 0;
+  const pending = (amount || 0) - rec;
+  const result = runQuery('INSERT INTO jobs (date, machine_id, customer_name, location, work_description, depth_feet, status, amount, received, pending, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [date, machine_id, customer_name, location, work_description, depth_feet, status || 'completed', amount || 0, rec, pending, req.user.id]);
   if (req.app.get('broadcast')) req.app.get('broadcast')('job:added', { id: result.lastInsertRowid, date, machine_id, customer_name, amount });
   res.json({ id: result.lastInsertRowid, message: 'Job added' });
 });
 
 router.put('/:id', auth, (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
-  const { date, machine_id, customer_name, location, work_description, depth_feet, status, amount } = req.body;
-  runQuery('UPDATE jobs SET date=?, machine_id=?, customer_name=?, location=?, work_description=?, depth_feet=?, status=?, amount=? WHERE id=?', [date, machine_id, customer_name, location, work_description, depth_feet, status, amount, req.params.id]);
+  const { date, machine_id, customer_name, location, work_description, depth_feet, status, amount, received } = req.body;
+  const rec = received || 0;
+  const pending = (amount || 0) - rec;
+  runQuery('UPDATE jobs SET date=?, machine_id=?, customer_name=?, location=?, work_description=?, depth_feet=?, status=?, amount=?, received=?, pending=? WHERE id=?', [date, machine_id, customer_name, location, work_description, depth_feet, status, amount, rec, pending, req.params.id]);
   if (req.app.get('broadcast')) req.app.get('broadcast')('job:updated', { id: req.params.id });
   res.json({ message: 'Job updated' });
 });

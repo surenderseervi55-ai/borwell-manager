@@ -70,6 +70,7 @@ async function getDb() {
     description TEXT,
     machine_id INTEGER,
     added_by INTEGER,
+    attachment TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
@@ -83,8 +84,69 @@ async function getDb() {
     depth_feet INTEGER,
     status TEXT DEFAULT 'completed',
     amount REAL DEFAULT 0,
+    received REAL DEFAULT 0,
+    pending REAL DEFAULT 0,
     created_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS bills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bill_number TEXT UNIQUE NOT NULL,
+    date TEXT NOT NULL,
+    customer_name TEXT NOT NULL,
+    customer_phone TEXT,
+    machine_id INTEGER,
+    job_id INTEGER,
+    total_amount REAL NOT NULL,
+    received_amount REAL DEFAULT 0,
+    pending_amount REAL DEFAULT 0,
+    status TEXT DEFAULT 'pending' CHECK(status IN ('pending','partial','paid','cancelled')),
+    notes TEXT,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS bill_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bill_id INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    payment_date TEXT NOT NULL,
+    payment_mode TEXT DEFAULT 'cash',
+    notes TEXT,
+    received_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (bill_id) REFERENCES bills(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS worker_salaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id INTEGER NOT NULL,
+    per_day_rate REAL DEFAULT 0,
+    monthly_fixed REAL DEFAULT 0,
+    salary_type TEXT DEFAULT 'per_day' CHECK(salary_type IN ('per_day','monthly')),
+    effective_from TEXT NOT NULL,
+    effective_to TEXT,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (worker_id) REFERENCES workers(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS salary_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id INTEGER NOT NULL,
+    salary_period_from TEXT NOT NULL,
+    salary_period_to TEXT NOT NULL,
+    days_worked INTEGER DEFAULT 0,
+    gross_salary REAL DEFAULT 0,
+    advance_deducted REAL DEFAULT 0,
+    net_paid REAL DEFAULT 0,
+    payment_date TEXT,
+    payment_mode TEXT DEFAULT 'cash',
+    notes TEXT,
+    paid_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (worker_id) REFERENCES workers(id)
   )`);
 
   saveDb();

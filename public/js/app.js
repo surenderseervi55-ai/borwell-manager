@@ -63,7 +63,10 @@ function initSocket() {
   const events = ['attendance:added', 'attendance:updated', 'attendance:deleted', 'attendance:bulk',
                   'expense:added', 'expense:updated', 'expense:deleted',
                   'job:added', 'job:updated', 'job:deleted',
-                  'worker:added', 'worker:updated', 'worker:deleted'];
+                  'worker:added', 'worker:updated', 'worker:deleted',
+                  'bill:added', 'bill:updated', 'bill:deleted', 'bill:payment',
+                  'salary:config:added', 'salary:config:updated', 'salary:config:deleted',
+                  'salary:payment:added', 'salary:payment:updated', 'salary:payment:deleted'];
   events.forEach(ev => socket.on(ev, () => {
     if (activeSection) { sectionLoaded[activeSection] = false; loadSection(activeSection); }
   }));
@@ -77,6 +80,8 @@ async function loadSection(id) {
     if (id === 'admin-dashboard') await loadAdminDashboard();
     else if (id === 'admin-attendance') await loadAdminAttendance();
     else if (id === 'admin-expenses') await loadAdminExpenses();
+    else if (id === 'admin-bills') await loadAdminBills();
+    else if (id === 'admin-salaries') await loadAdminSalaries();
     else if (id === 'admin-machines') await loadAdminMachines();
     else if (id === 'admin-workers') await loadAdminWorkers();
     else if (id === 'admin-reports') await loadAdminReports();
@@ -255,7 +260,7 @@ async function filterExpenses() {
 
 function showAddExpense() {
   showModal('Add Expense', `
-    <form onsubmit="submitExpense(event)">
+    <form id="expense-form" onsubmit="submitExpense(event)">
       <div class="form-row">
         <div class="form-group"><label>Date</label><input type="date" id="exp-date" value="${today()}" required></div>
         <div class="form-group"><label>Category</label><select id="exp-cat" required><option>Fuel</option><option>Repair</option><option>Salary</option><option>Material</option><option>Transport</option><option>Rent</option><option>Other</option></select></div>
@@ -265,6 +270,7 @@ function showAddExpense() {
         <div class="form-group"><label>Machine</label><select id="exp-machine"><option value="">None</option></select></div>
       </div>
       <div class="form-group"><label>Description</label><input type="text" id="exp-desc" placeholder="What for?"></div>
+      <div class="form-group"><label>Attachment (Receipt/Photo)</label><input type="file" id="exp-attachment" accept="image/*,application/pdf"></div>
       <div class="modal-actions"><button type="submit" class="btn btn-primary">Save</button></div>
     </form>`);
   loadMachineSelect('exp-machine');
@@ -272,9 +278,20 @@ function showAddExpense() {
 
 async function submitExpense(e) {
   e.preventDefault();
-  const data = { date: document.getElementById('exp-date').value, category: document.getElementById('exp-cat').value, amount: parseFloat(document.getElementById('exp-amount').value), description: document.getElementById('exp-desc').value, machine_id: parseInt(document.getElementById('exp-machine').value) || null };
+  const formData = new FormData();
+  formData.append('date', document.getElementById('exp-date').value);
+  formData.append('category', document.getElementById('exp-cat').value);
+  formData.append('amount', document.getElementById('exp-amount').value);
+  formData.append('description', document.getElementById('exp-desc').value);
+  formData.append('machine_id', document.getElementById('exp-machine').value || '');
+  const attachment = document.getElementById('exp-attachment').files[0];
+  if (attachment) formData.append('attachment', attachment);
+  
   try {
-    await apiCall('/api/expenses', { method: 'POST', body: JSON.stringify(data) });
+    const res = await fetch('/api/expenses', { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` }, body: formData });
+    if (res.status === 401) { logout(); throw new Error('Session expired'); }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
     showToast('Expense added!');
     document.querySelector('.modal-overlay').remove();
     sectionLoaded[activeSection] = false;
@@ -291,15 +308,28 @@ function editExpense(r) {
       </div>
       <div class="form-group"><label>Amount (₹)</label><input type="number" id="exp-amount" value="${r.amount}" required min="0" step="0.01"></div>
       <div class="form-group"><label>Description</label><input type="text" id="exp-desc" value="${r.description||''}"></div>
+      ${r.attachment ? `<div class="form-group"><label>Current Attachment</label><div><img src="${r.attachment}" style="max-width:200px;max-height:150px;cursor:pointer" onclick="window.open('${r.attachment}','_blank')"></div></div>` : ''}
+      <div class="form-group"><label>New Attachment (Optional)</label><input type="file" id="exp-attachment" accept="image/*,application/pdf"></div>
       <div class="modal-actions"><button type="submit" class="btn btn-primary">Update</button></div>
     </form>`);
 }
 
 async function updateExpense(e, id) {
   e.preventDefault();
-  const data = { date: document.getElementById('exp-date').value, category: document.getElementById('exp-cat').value, amount: parseFloat(document.getElementById('exp-amount').value), description: document.getElementById('exp-desc').value, machine_id: null };
+  const formData = new FormData();
+  formData.append('date', document.getElementById('exp-date').value);
+  formData.append('category', document.getElementById('exp-cat').value);
+  formData.append('amount', document.getElementById('exp-amount').value);
+  formData.append('description', document.getElementById('exp-desc').value);
+  formData.append('machine_id', '');
+  const attachment = document.getElementById('exp-attachment').files[0];
+  if (attachment) formData.append('attachment', attachment);
+  
   try {
-    await apiCall(`/api/expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+    const res = await fetch('/api/expenses/' + id, { method: 'PUT', headers: { 'Authorization': `Bearer ${authToken}` }, body: formData });
+    if (res.status === 401) { logout(); throw new Error('Session expired'); }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
     showToast('Expense updated!');
     document.querySelector('.modal-overlay').remove();
     sectionLoaded[activeSection] = false;
@@ -425,7 +455,317 @@ async function loadMachineSelect(selectId, selectedId) {
   } catch (e) {}
 }
 
-async function loadAdminReports() {
+async function loadAdminBills() {
+  const el = document.getElementById('admin-bills');
+  const [bills, machines, workers] = await Promise.all([
+    apiCall('/api/bills'),
+    apiCall('/api/machines'),
+    apiCall('/api/workers')
+  ]);
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-header"><h2>📄 Bills / Invoices</h2><button class="btn btn-primary btn-sm" onclick="showCreateBill()">+ Create Bill</button></div>
+      <div class="filter-bar">
+        <div class="form-group"><label>Status</label><select id="bill-status-filter"><option value="">All</option><option value="pending">Pending</option><option value="partial">Partial</option><option value="paid">Paid</option><option value="cancelled">Cancelled</option></select></div>
+        <div class="form-group"><label>Customer</label><input type="text" id="bill-customer-filter" placeholder="Search customer..."></div>
+        <button class="btn btn-primary btn-sm" onclick="filterBills()">Filter</button>
+      </div>
+      ${renderTable(['Bill #','Date','Customer','Phone','Machine','Total','Received','Pending','Status','Actions'], bills.map(b => {
+        const statusBadge = b.status === 'paid' ? 'badge-present' : (b.status === 'partial' ? 'badge-half_day' : (b.status === 'cancelled' ? 'badge-absent' : 'badge-warning'));
+        return `<tr>
+          <td>${b.bill_number}</td><td>${formatDate(b.date)}</td><td>${b.customer_name}</td><td>${b.customer_phone||'-'}</td>
+          <td>${b.machine_name||'-'}</td><td>${formatMoney(b.total_amount)}</td><td>${formatMoney(b.received_amount)}</td>
+          <td style="color:${b.pending_amount>0?'#c62828':'#2e7d32'}">${formatMoney(b.pending_amount)}</td>
+          <td><span class="badge ${statusBadge}">${b.status}</span></td>
+          <td><button class="btn btn-sm btn-primary" onclick="viewBill(${b.id})">View</button> <button class="btn btn-sm btn-success" onclick="addPayment(${b.id}, ${b.pending_amount})">Payment</button></td>
+        </tr>`;
+      }).join(''), 'No bills')}
+    </div>`;
+}
+
+async function filterBills() {
+  const status = document.getElementById('bill-status-filter').value;
+  const customer = document.getElementById('bill-customer-filter').value;
+  let url = '/api/bills?';
+  const params = [];
+  if (status) params.push('status=' + status);
+  if (customer) params.push('customer_name=' + encodeURIComponent(customer));
+  url += params.join('&');
+  const bills = await apiCall(url);
+  document.querySelector('#admin-bills .table-container tbody').innerHTML = bills.map(b => {
+    const statusBadge = b.status === 'paid' ? 'badge-present' : (b.status === 'partial' ? 'badge-half_day' : (b.status === 'cancelled' ? 'badge-absent' : 'badge-warning'));
+    return `<tr>
+      <td>${b.bill_number}</td><td>${formatDate(b.date)}</td><td>${b.customer_name}</td><td>${b.customer_phone||'-'}</td>
+      <td>${b.machine_name||'-'}</td><td>${formatMoney(b.total_amount)}</td><td>${formatMoney(b.received_amount)}</td>
+      <td style="color:${b.pending_amount>0?'#c62828':'#2e7d32'}">${formatMoney(b.pending_amount)}</td>
+      <td><span class="badge ${statusBadge}">${b.status}</span></td>
+      <td><button class="btn btn-sm btn-primary" onclick="viewBill(${b.id})">View</button> <button class="btn btn-sm btn-success" onclick="addPayment(${b.id}, ${b.pending_amount})">Payment</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="10" class="empty-state">No bills</td></tr>';
+}
+
+function showCreateBill() {
+  showModal('Create Bill', `
+    <form onsubmit="submitBill(event)">
+      <div class="form-row">
+        <div class="form-group"><label>Date</label><input type="date" id="bill-date" value="${today()}" required></div>
+        <div class="form-group"><label>Bill #</label><input type="text" id="bill-number" placeholder="Auto-generated" readonly></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Customer Name</label><input type="text" id="bill-customer" required></div>
+        <div class="form-group"><label>Customer Phone</label><input type="tel" id="bill-phone"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Machine</label><select id="bill-machine"><option value="">Select</option></select></div>
+        <div class="form-group"><label>Job (Optional)</label><select id="bill-job"><option value="">None</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Total Amount (₹)</label><input type="number" id="bill-total" required min="0" step="0.01"></div>
+        <div class="form-group"><label>Received (₹)</label><input type="number" id="bill-received" value="0" min="0" step="0.01"></div>
+      </div>
+      <div class="form-group"><label>Notes</label><input type="text" id="bill-notes" placeholder="Optional"></div>
+      <div class="modal-actions"><button type="submit" class="btn btn-primary">Create Bill</button></div>
+    </form>`);
+  loadBillMachineSelect();
+  loadBillJobSelect();
+}
+
+async function loadBillMachineSelect() {
+  const machines = await apiCall('/api/machines');
+  const sel = document.getElementById('bill-machine');
+  machines.forEach(m => { const opt = document.createElement('option'); opt.value = m.id; opt.textContent = m.name; sel.appendChild(opt); });
+}
+
+async function loadBillJobSelect() {
+  const jobs = await apiCall('/api/jobs');
+  const sel = document.getElementById('bill-job');
+  jobs.forEach(j => { const opt = document.createElement('option'); opt.value = j.id; opt.textContent = `${j.bill_number||'Job'} - ${j.customer_name} (${formatMoney(j.amount)})`; sel.appendChild(opt); });
+}
+
+async function submitBill(e) {
+  e.preventDefault();
+  const data = { date: document.getElementById('bill-date').value, customer_name: document.getElementById('bill-customer').value, customer_phone: document.getElementById('bill-phone').value, machine_id: parseInt(document.getElementById('bill-machine').value) || null, job_id: parseInt(document.getElementById('bill-job').value) || null, total_amount: parseFloat(document.getElementById('bill-total').value), received_amount: parseFloat(document.getElementById('bill-received').value) || 0, notes: document.getElementById('bill-notes').value };
+  try {
+    await apiCall('/api/bills', { method: 'POST', body: JSON.stringify(data) });
+    showToast('Bill created!');
+    document.querySelector('.modal-overlay').remove();
+    sectionLoaded[activeSection] = false;
+    loadSection(activeSection);
+  } catch (err) { showToast('Error: ' + err.message); }
+}
+
+async function viewBill(id) {
+  try {
+    const { bill, payments } = await apiCall('/api/bills/' + id);
+    const statusBadge = bill.status === 'paid' ? 'badge-present' : (bill.status === 'partial' ? 'badge-half_day' : (bill.status === 'cancelled' ? 'badge-absent' : 'badge-warning'));
+    showModal(`Bill ${bill.bill_number}`, `
+      <div style="margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:12px">
+          <div><strong>Customer:</strong> ${bill.customer_name}</div>
+          <div><strong>Phone:</strong> ${bill.customer_phone||'-'}</div>
+          <div><strong>Date:</strong> ${formatDate(bill.date)}</div>
+          <div><strong>Machine:</strong> ${bill.machine_name||'-'}</div>
+          <div><strong>Total:</strong> ${formatMoney(bill.total_amount)}</div>
+          <div><strong>Received:</strong> ${formatMoney(bill.received_amount)}</div>
+          <div><strong>Pending:</strong> <span style="color:${bill.pending_amount>0?'#c62828':'#2e7d32'}">${formatMoney(bill.pending_amount)}</span></div>
+          <div><strong>Status:</strong> <span class="badge ${statusBadge}">${bill.status}</span></div>
+        </div>
+        ${bill.notes ? `<div><strong>Notes:</strong> ${bill.notes}</div>` : ''}
+        <hr style="margin:12px 0">
+        <h4>Payments</h4>
+        ${payments.length ? renderTable(['Date','Amount','Mode','Notes','By'], payments.map(p => `<tr><td>${formatDate(p.payment_date)}</td><td>${formatMoney(p.amount)}</td><td>${p.payment_mode}</td><td>${p.notes||'-'}</td><td>${p.received_by_name||'-'}</td></tr>`), 'No payments') : '<p>No payments yet</p>'}
+        <div style="margin-top:12px"><button class="btn btn-success btn-sm" onclick="addPayment(${bill.id}, ${bill.pending_amount})">Add Payment</button></div>
+      </div>`);
+  } catch (err) { showToast('Error loading bill'); }
+}
+
+function addPayment(billId, pending) {
+  showModal('Add Payment', `
+    <form onsubmit="submitPayment(event, ${billId})">
+      <div class="form-row">
+        <div class="form-group"><label>Amount (₹)</label><input type="number" id="pay-amount" required min="0.01" step="0.01" max="${pending}" value="${pending}"></div>
+        <div class="form-group"><label>Date</label><input type="date" id="pay-date" value="${today()}" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Mode</label><select id="pay-mode"><option value="cash">Cash</option><option value="upi">UPI</option><option value="bank">Bank Transfer</option><option value="cheque">Cheque</option></select></div>
+        <div class="form-group"><label>Pending will be</label><input type="text" id="pay-pending-preview" value="${formatMoney(pending)}" readonly style="background:#f5f5f5"></div>
+      </div>
+      <div class="form-group"><label>Notes</label><input type="text" id="pay-notes" placeholder="Optional"></div>
+      <div class="modal-actions"><button type="submit" class="btn btn-success">Record Payment</button></div>
+    </form>`);
+  document.getElementById('pay-amount').addEventListener('input', (e) => {
+    const pending = parseFloat(e.target.getAttribute('max')) || 0;
+    const paid = parseFloat(e.target.value) || 0;
+    document.getElementById('pay-pending-preview').value = formatMoney(pending - paid);
+  });
+}
+
+async function submitPayment(e, billId) {
+  e.preventDefault();
+  const data = { amount: parseFloat(document.getElementById('pay-amount').value), payment_date: document.getElementById('pay-date').value, payment_mode: document.getElementById('pay-mode').value, notes: document.getElementById('pay-notes').value };
+  try {
+    await apiCall('/api/bills/' + billId + '/payment', { method: 'POST', body: JSON.stringify(data) });
+    showToast('Payment recorded!');
+    document.querySelector('.modal-overlay').remove();
+    sectionLoaded[activeSection] = false;
+    loadSection(activeSection);
+  } catch (err) { showToast('Error: ' + err.message); }
+}
+
+async function loadAdminSalaries() {
+  const el = document.getElementById('admin-salaries');
+  const [summary, configs, workers] = await Promise.all([
+    apiCall('/api/salary-payments/summary'),
+    apiCall('/api/salaries'),
+    apiCall('/api/workers')
+  ]);
+  
+  const configMap = {};
+  configs.forEach(c => { if (!configMap[c.worker_id] || new Date(c.effective_from) > new Date(configMap[c.worker_id].effective_from)) configMap[c.worker_id] = c; });
+  
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-header"><h2>💵 Salary Config (Per-Day Rates)</h2><button class="btn btn-primary btn-sm" onclick="showSalaryConfig()">+ Set Rate</button></div>
+      ${renderTable(['Worker','Phone','Type','Per Day Rate','Monthly Fixed','Effective From','Actions'], workers.filter(w => w.active).map(w => {
+        const cfg = configMap[w.id];
+        return `<tr>
+          <td>${w.name}</td><td>${w.phone||'-'}</td>
+          <td>${cfg ? cfg.salary_type : 'per_day'}</td>
+          <td>${cfg ? formatMoney(cfg.per_day_rate) : '-'}</td>
+          <td>${cfg && cfg.salary_type === 'monthly' ? formatMoney(cfg.monthly_fixed) : '-'}</td>
+          <td>${cfg ? formatDate(cfg.effective_from) : '-'}</td>
+          <td>${cfg ? `<button class="btn btn-sm btn-primary" onclick='editSalaryConfig(${JSON.stringify(cfg).replace(/'/g,"'")})'>Edit</button>` : `<button class="btn btn-sm btn-primary" onclick='showSalaryConfig(${w.id})'>Add</button>`}</td>
+        </tr>`;
+      }).join(''), 'No active workers')}
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><h2>💰 Salary Payments</h2><button class="btn btn-primary btn-sm" onclick="showSalaryPayment()">+ Record Payment</button></div>
+      <div class="filter-bar">
+        <div class="form-group"><label>From</label><input type="date" id="sal-from" value="${new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]}"></div>
+        <div class="form-group"><label>To</label><input type="date" id="sal-to" value="${today()}"></div>
+        <button class="btn btn-primary btn-sm" onclick="loadSalaryPayments()">Filter</button>
+      </div>
+      <div id="salary-payments-table">${renderSalaryPayments(summary.workers)}</div>
+    </div>`;
+}
+
+function renderSalaryPayments(workers) {
+  return renderTable(['Worker','Days','Gross','Paid','Pending','Actions'], workers.map(w => `
+    <tr>
+      <td>${w.name}</td><td>${w.days_worked}</td><td>${formatMoney(w.gross_salary)}</td>
+      <td>${formatMoney(w.paid)}</td>
+      <td style="color:${w.pending>0?'#c62828':'#2e7d32'}">${formatMoney(w.pending)}</td>
+      <td><button class="btn btn-sm btn-primary" onclick='showSalaryPayment(${w.id})'>Pay</button></td>
+    </tr>`).join(''), 'No workers');
+}
+
+async function loadSalaryPayments() {
+  const from = document.getElementById('sal-from').value;
+  const to = document.getElementById('sal-to').value;
+  const summary = await apiCall('/api/salary-payments/summary?from=' + from + '&to=' + to);
+  document.getElementById('salary-payments-table').innerHTML = renderSalaryPayments(summary.workers);
+}
+
+function showSalaryConfig(workerId) {
+  const worker = workerId ? { id: workerId } : null;
+  showModal(worker ? 'Set Salary Rate' : 'Set Salary Rate', `
+    <form onsubmit="submitSalaryConfig(event${worker ? ', ' + worker.id : ''})">
+      <div class="form-group"><label>Worker</label><select id="sal-worker" ${worker ? 'disabled' : ''} required><option value="">Select</option></select></div>
+      <div class="form-row">
+        <div class="form-group"><label>Salary Type</label><select id="sal-type" onchange="toggleSalaryFields()"><option value="per_day">Per Day</option><option value="monthly">Monthly Fixed</option></select></div>
+        <div class="form-group"><label>Effective From</label><input type="date" id="sal-effective" value="${today()}" required></div>
+      </div>
+      <div id="sal-per-day-fields">
+        <div class="form-group"><label>Per Day Rate (₹)</label><input type="number" id="sal-per-day" min="0" step="0.01" required></div>
+      </div>
+      <div id="sal-monthly-fields" style="display:none">
+        <div class="form-group"><label>Monthly Fixed (₹)</label><input type="number" id="sal-monthly" min="0" step="0.01" required></div>
+      </div>
+      <div class="form-group"><label>Effective To (Optional)</label><input type="date" id="sal-effective-to"></div>
+      <div class="modal-actions"><button type="submit" class="btn btn-primary">Save</button></div>
+    </form>`);
+  loadSalaryWorkerSelect(workerId);
+}
+
+function toggleSalaryFields() {
+  const type = document.getElementById('sal-type').value;
+  document.getElementById('sal-per-day-fields').style.display = type === 'per_day' ? '' : 'none';
+  document.getElementById('sal-monthly-fields').style.display = type === 'monthly' ? '' : 'none';
+}
+
+async function loadSalaryWorkerSelect(selectedId) {
+  const workers = await apiCall('/api/workers');
+  const sel = document.getElementById('sal-worker');
+  workers.filter(w => w.active).forEach(w => { const opt = document.createElement('option'); opt.value = w.id; opt.textContent = w.name; if (w.id === selectedId) opt.selected = true; sel.appendChild(opt); });
+}
+
+async function submitSalaryConfig(e, existingId) {
+  e.preventDefault();
+  const data = { worker_id: existingId || parseInt(document.getElementById('sal-worker').value), per_day_rate: parseFloat(document.getElementById('sal-per-day').value) || 0, monthly_fixed: parseFloat(document.getElementById('sal-monthly').value) || 0, salary_type: document.getElementById('sal-type').value, effective_from: document.getElementById('sal-effective').value, effective_to: document.getElementById('sal-effective-to').value || null };
+  try {
+    if (existingId) {
+      await apiCall('/api/salaries/' + existingId, { method: 'PUT', body: JSON.stringify(data) });
+    } else {
+      await apiCall('/api/salaries', { method: 'POST', body: JSON.stringify(data) });
+    }
+    showToast('Salary config saved!');
+    document.querySelector('.modal-overlay').remove();
+    sectionLoaded[activeSection] = false;
+    loadSection(activeSection);
+  } catch (err) { showToast('Error: ' + err.message); }
+}
+
+function editSalaryConfig(cfg) {
+  showSalaryConfig(cfg.worker_id);
+  setTimeout(() => {
+    document.getElementById('sal-type').value = cfg.salary_type;
+    toggleSalaryFields();
+    document.getElementById('sal-per-day').value = cfg.per_day_rate;
+    document.getElementById('sal-monthly').value = cfg.monthly_fixed || 0;
+    document.getElementById('sal-effective').value = cfg.effective_from;
+    document.getElementById('sal-effective-to').value = cfg.effective_to || '';
+  }, 100);
+}
+
+function showSalaryPayment(workerId) {
+  showModal('Record Salary Payment', `
+    <form onsubmit="submitSalaryPayment(event${workerId ? ', ' + workerId : ''})">
+      <div class="form-group"><label>Worker</label><select id="sp-worker" ${workerId ? 'disabled' : ''} required><option value="">Select</option></select></div>
+      <div class="form-row">
+        <div class="form-group"><label>Period From</label><input type="date" id="sp-from" required></div>
+        <div class="form-group"><label>Period To</label><input type="date" id="sp-to" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Days Worked</label><input type="number" id="sp-days" min="0" required></div>
+        <div class="form-group"><label>Gross Salary (₹)</label><input type="number" id="sp-gross" min="0" step="0.01" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Advance Deducted (₹)</label><input type="number" id="sp-advance" min="0" step="0.01" value="0"></div>
+        <div class="form-group"><label>Net Paid (₹)</label><input type="number" id="sp-net" min="0" step="0.01" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Payment Date</label><input type="date" id="sp-date" value="${today()}"></div>
+        <div class="form-group"><label>Mode</label><select id="sp-mode"><option value="cash">Cash</option><option value="upi">UPI</option><option value="bank">Bank Transfer</option></select></div>
+      </div>
+      <div class="form-group"><label>Notes</label><input type="text" id="sp-notes" placeholder="Optional"></div>
+      <div class="modal-actions"><button type="submit" class="btn btn-primary">Record Payment</button></div>
+    </form>`);
+  loadSalaryWorkerSelect(workerId);
+  document.getElementById('sp-from').value = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+  document.getElementById('sp-to').value = today();
+}
+
+async function submitSalaryPayment(e, existingWorkerId) {
+  e.preventDefault();
+  const data = { worker_id: existingWorkerId || parseInt(document.getElementById('sp-worker').value), salary_period_from: document.getElementById('sp-from').value, salary_period_to: document.getElementById('sp-to').value, days_worked: parseInt(document.getElementById('sp-days').value), gross_salary: parseFloat(document.getElementById('sp-gross').value), advance_deducted: parseFloat(document.getElementById('sp-advance').value) || 0, net_paid: parseFloat(document.getElementById('sp-net').value), payment_date: document.getElementById('sp-date').value, payment_mode: document.getElementById('sp-mode').value, notes: document.getElementById('sp-notes').value };
+  try {
+    await apiCall('/api/salary-payments', { method: 'POST', body: JSON.stringify(data) });
+    showToast('Salary payment recorded!');
+    document.querySelector('.modal-overlay').remove();
+    sectionLoaded[activeSection] = false;
+    loadSection(activeSection);
+  } catch (err) { showToast('Error: ' + err.message); }
+}
   const el = document.getElementById('admin-reports');
   el.innerHTML = `
     <div class="card">
