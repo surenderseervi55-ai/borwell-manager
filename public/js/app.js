@@ -666,7 +666,7 @@ async function loadAdminSalaries() {
           <td>${cfg ? formatDate(cfg.effective_from) : '-'}</td>
           <td>${cfg ? `<button class="btn btn-sm btn-primary" onclick='editSalaryConfig(${JSON.stringify(cfg).replace(/'/g,"&#39;")})'>Edit</button>` : `<button class="btn btn-sm btn-primary" onclick='showSalaryConfig(${w.id})'>Add</button>`}</td>
         </tr>`;
-      }).join(''), 'No active workers')}
+      }), 'No active workers')}
     </div>
     <div class="card" style="margin-top:16px">
       <div class="card-header"><h2>💰 Salary Payments</h2><button class="btn btn-primary btn-sm" onclick="showSalaryPayment()">+ Record Payment</button></div>
@@ -687,7 +687,7 @@ function renderSalaryPayments(workers) {
       <td>${formatMoney(w.paid)}</td>
       <td style="color:${w.pending>0?'#c62828':'#2e7d32'}">${formatMoney(w.pending)}</td>
       <td><button class="btn btn-sm btn-primary" onclick='showSalaryPayment(${w.id})'>Pay</button></td>
-    </tr>`).join(''), 'No workers');
+    </tr>`), 'No workers');
 }
 
 async function loadSalaryPayments() {

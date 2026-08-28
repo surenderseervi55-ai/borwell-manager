@@ -19,12 +19,14 @@ router.get('/daily', auth, (req, res) => {
   const expenses = getAll('SELECT e.*, m.name as machine_name FROM expenses e LEFT JOIN machines m ON e.machine_id = m.id WHERE e.date = ?', [d]);
   const jobs = getAll('SELECT j.*, m.name as machine_name FROM jobs j JOIN machines m ON j.machine_id = m.id WHERE j.date = ?', [d]);
 
+  const bills = getAll('SELECT b.*, m.name as machine_name FROM bills b LEFT JOIN machines m ON b.machine_id = m.id WHERE b.date = ?', [d]);
   const totalExpense = expenses.reduce((s, e) => s + (e.amount || 0), 0);
-  const totalIncome = jobs.reduce((s, j) => s + (j.amount || 0), 0);
+  const totalIncome = jobs.reduce((s, j) => s + (j.amount || 0), 0) + bills.reduce((s, b) => s + (b.received_amount || 0), 0);
+  const totalPending = bills.reduce((s, b) => s + (b.pending_amount || 0), 0) + jobs.reduce((s, j) => s + (j.pending || 0), 0);
   const present = attendance.filter(a => a.status === 'present').length;
   const absent = attendance.filter(a => a.status === 'absent').length;
 
-  res.json({ date: d, attendance: { total: attendance.length, present, absent, records: attendance }, expenses: { total: totalExpense, records: expenses }, jobs: { total: jobs.length, income: totalIncome, records: jobs }, profit: totalIncome - totalExpense });
+  res.json({ date: d, attendance: { total: attendance.length, present, absent, records: attendance }, expenses: { total: totalExpense, records: expenses }, jobs: { total: jobs.length, income: totalIncome, records: jobs }, bills: { total: bills.length, received: bills.reduce((s,b)=>s+(b.received_amount||0),0), pending: totalPending, records: bills }, profit: totalIncome - totalExpense, pending: totalPending });
 });
 
 router.get('/monthly', auth, (req, res) => {
