@@ -31,7 +31,7 @@ router.get('/summary', auth, (req, res) => {
     (SELECT monthly_fixed FROM worker_salaries WHERE worker_id = w.id AND effective_from <= ? ORDER BY effective_from DESC LIMIT 1) as monthly_fixed
     FROM workers w WHERE w.active = 1`, [t, t, t]);
   
-  const attendance = getAll('SELECT worker_id, COUNT(*) as days_present FROM attendance WHERE date BETWEEN ? AND ? AND status = "present" GROUP BY worker_id', [f, t]);
+  const attendance = getAll(`SELECT worker_id, SUM(CASE WHEN status='present' THEN 1 WHEN status='half_day' THEN 0.5 ELSE 0 END) as days_present FROM attendance WHERE date BETWEEN ? AND ? GROUP BY worker_id`, [f, t]);
   const payments = getAll('SELECT worker_id, SUM(net_paid) as total_paid, SUM(advance_deducted) as total_advance FROM salary_payments WHERE payment_date BETWEEN ? AND ? GROUP BY worker_id', [f, t]);
   
   const attMap = Object.fromEntries(attendance.map(a => [a.worker_id, a.days_present]));

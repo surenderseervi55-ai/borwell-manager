@@ -507,7 +507,7 @@ async function loadAdminBills() {
           <td><span class="badge ${statusBadge}">${b.status}</span></td>
           <td><button class="btn btn-sm btn-primary" onclick="viewBill(${b.id})">View</button> <button class="btn btn-sm btn-success" onclick="addPayment(${b.id}, ${b.pending_amount})">Payment</button></td>
         </tr>`;
-      }).join(''), 'No bills')}
+      }), 'No bills')}
     </div>`;
   } catch(e) { el.innerHTML = `<div class="card"><p style="color:red">Error loading bills: ${e.message}</p></div>`; console.error(e); }
 }
@@ -697,10 +697,14 @@ async function loadSalaryPayments() {
   document.getElementById('salary-payments-table').innerHTML = renderSalaryPayments(summary.workers);
 }
 
+let editingSalaryConfigId = null;
+let pendingSalaryWorkerId = null;
 function showSalaryConfig(workerId) {
+  editingSalaryConfigId = null;
+  pendingSalaryWorkerId = workerId || null;
   const worker = workerId ? { id: workerId } : null;
   showModal(worker ? 'Set Salary Rate' : 'Set Salary Rate', `
-    <form onsubmit="submitSalaryConfig(event${worker ? ', ' + worker.id : ''})">
+    <form onsubmit="submitSalaryConfig(event)">
       <div class="form-group"><label>Worker</label><select id="sal-worker" ${worker ? 'disabled' : ''} required><option value="">Select</option></select></div>
       <div class="form-row">
         <div class="form-group"><label>Salary Type</label><select id="sal-type" onchange="toggleSalaryFields()"><option value="per_day">Per Day</option><option value="monthly">Monthly Fixed</option></select></div>
@@ -730,12 +734,14 @@ async function loadSalaryWorkerSelect(selectedId) {
   workers.filter(w => w.active).forEach(w => { const opt = document.createElement('option'); opt.value = w.id; opt.textContent = w.name; if (w.id === selectedId) opt.selected = true; sel.appendChild(opt); });
 }
 
-async function submitSalaryConfig(e, existingId) {
+async function submitSalaryConfig(e) {
   e.preventDefault();
-  const data = { worker_id: existingId || parseInt(document.getElementById('sal-worker').value), per_day_rate: parseFloat(document.getElementById('sal-per-day').value) || 0, monthly_fixed: parseFloat(document.getElementById('sal-monthly').value) || 0, salary_type: document.getElementById('sal-type').value, effective_from: document.getElementById('sal-effective').value, effective_to: document.getElementById('sal-effective-to').value || null };
+  let workerId = pendingSalaryWorkerId || parseInt(document.getElementById('sal-worker').value);
+  if (!workerId) { showToast('Select worker'); return; }
+  const data = { worker_id: workerId, per_day_rate: parseFloat(document.getElementById('sal-per-day').value) || 0, monthly_fixed: parseFloat(document.getElementById('sal-monthly').value) || 0, salary_type: document.getElementById('sal-type').value, effective_from: document.getElementById('sal-effective').value, effective_to: document.getElementById('sal-effective-to').value || null };
   try {
-    if (existingId) {
-      await apiCall('/api/salaries/' + existingId, { method: 'PUT', body: JSON.stringify(data) });
+    if (editingSalaryConfigId) {
+      await apiCall('/api/salaries/' + editingSalaryConfigId, { method: 'PUT', body: JSON.stringify(data) });
     } else {
       await apiCall('/api/salaries', { method: 'POST', body: JSON.stringify(data) });
     }
@@ -748,6 +754,8 @@ async function submitSalaryConfig(e, existingId) {
 
 function editSalaryConfig(cfg) {
   showSalaryConfig(cfg.worker_id);
+  editingSalaryConfigId = cfg.id;
+  pendingSalaryWorkerId = cfg.worker_id;
   setTimeout(() => {
     document.getElementById('sal-type').value = cfg.salary_type;
     toggleSalaryFields();
@@ -755,7 +763,7 @@ function editSalaryConfig(cfg) {
     document.getElementById('sal-monthly').value = cfg.monthly_fixed || 0;
     document.getElementById('sal-effective').value = cfg.effective_from;
     document.getElementById('sal-effective-to').value = cfg.effective_to || '';
-  }, 100);
+  }, 150);
 }
 
 function showSalaryPayment(workerId) {
