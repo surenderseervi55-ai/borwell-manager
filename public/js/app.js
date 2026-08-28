@@ -720,12 +720,18 @@ function showSalaryConfig(workerId) {
       <div class="modal-actions"><button type="submit" class="btn btn-primary">Save</button></div>
     </form>`);
   loadSalaryWorkerSelect(workerId);
+  setTimeout(toggleSalaryFields, 50);
 }
 
 function toggleSalaryFields() {
   const type = document.getElementById('sal-type').value;
+  const perDayEl = document.getElementById('sal-per-day');
+  const monthlyEl = document.getElementById('sal-monthly');
   document.getElementById('sal-per-day-fields').style.display = type === 'per_day' ? '' : 'none';
   document.getElementById('sal-monthly-fields').style.display = type === 'monthly' ? '' : 'none';
+  if (perDayEl) perDayEl.required = type === 'per_day';
+  if (monthlyEl) monthlyEl.required = type === 'monthly';
+  if (type === 'monthly' && perDayEl) perDayEl.value = perDayEl.value || 0;
 }
 
 async function loadSalaryWorkerSelect(selectedId) {
