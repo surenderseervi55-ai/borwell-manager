@@ -766,6 +766,8 @@ async function submitSalaryPayment(e, existingWorkerId) {
     loadSection(activeSection);
   } catch (err) { showToast('Error: ' + err.message); }
 }
+
+async function loadAdminReports() {
   const el = document.getElementById('admin-reports');
   el.innerHTML = `
     <div class="card">
