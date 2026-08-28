@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Borwell Manager</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1a237e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+  <div id="app">
+    <div id="login-page" class="page active">
+      <div class="login-container">
+        <div class="login-card">
+          <div class="login-header">
+            <div class="logo">⚙️</div>
+            <h1>Borwell Manager</h1>
+            <p>Business Management System</p>
+          </div>
+          <form id="login-form">
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" id="login-username" required placeholder="Enter username">
+            </div>
+            <div class="form-group">
+              <label>Password</label>
+              <input type="password" id="login-password" required placeholder="Enter password">
+            </div>
+            <div id="login-error" class="error-msg"></div>
+            <button type="submit" class="btn btn-primary btn-full">Login</button>
+          </form>
+          <div class="login-footer">
+            <span id="offline-badge" class="badge badge-offline" style="display:none">Offline Mode</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="admin-page" class="page">
+      <nav class="navbar">
+        <div class="nav-brand">⚙️ Borwell Manager</div>
+        <button class="nav-toggle" onclick="toggleSidebar()">☰</button>
+        <div class="nav-user">
+          <span id="admin-username"></span>
+          <button class="btn btn-sm" onclick="logout()">Logout</button>
+        </div>
+      </nav>
+      <div class="layout">
+        <aside id="admin-sidebar" class="sidebar">
+          <a href="#" class="nav-link active" data-section="admin-dashboard" onclick="showSection('admin-dashboard', this)">📊 Dashboard</a>
+          <a href="#" class="nav-link" data-section="admin-attendance" onclick="showSection('admin-attendance', this)">✅ Attendance</a>
+          <a href="#" class="nav-link" data-section="admin-expenses" onclick="showSection('admin-expenses', this)">💰 Expenses</a>
+          <a href="#" class="nav-link" data-section="admin-machines" onclick="showSection('admin-machines', this)">🔧 Machines</a>
+          <a href="#" class="nav-link" data-section="admin-workers" onclick="showSection('admin-workers', this)">👥 Workers</a>
+          <a href="#" class="nav-link" data-section="admin-reports" onclick="showSection('admin-reports', this)">📈 Reports</a>
+          <a href="#" class="nav-link" data-section="admin-backup" onclick="showSection('admin-backup', this)">💾 Backup</a>
+        </aside>
+        <main class="main-content">
+          <div id="admin-dashboard" class="section active"></div>
+          <div id="admin-attendance" class="section"></div>
+          <div id="admin-expenses" class="section"></div>
+          <div id="admin-machines" class="section"></div>
+          <div id="admin-workers" class="section"></div>
+          <div id="admin-reports" class="section"></div>
+          <div id="admin-backup" class="section"></div>
+        </main>
+      </div>
+    </div>
+
+    <div id="manager-page" class="page">
+      <nav class="navbar">
+        <div class="nav-brand">⚙️ Borwell Manager</div>
+        <button class="nav-toggle" onclick="toggleSidebar()">☰</button>
+        <div class="nav-user">
+          <span id="manager-username"></span>
+          <button class="btn btn-sm" onclick="logout()">Logout</button>
+        </div>
+      </nav>
+      <div class="layout">
+        <aside id="manager-sidebar" class="sidebar">
+          <a href="#" class="nav-link active" data-section="manager-dashboard" onclick="showSection('manager-dashboard', this)">📊 Dashboard</a>
+          <a href="#" class="nav-link" data-section="manager-attendance" onclick="showSection('manager-attendance', this)">✅ Attendance</a>
+          <a href="#" class="nav-link" data-section="manager-expenses" onclick="showSection('manager-expenses', this)">💰 Expenses</a>
+        </aside>
+        <main class="main-content">
+          <div id="manager-dashboard" class="section active"></div>
+          <div id="manager-attendance" class="section"></div>
+          <div id="manager-expenses" class="section"></div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
