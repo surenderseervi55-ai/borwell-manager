@@ -117,10 +117,13 @@ async function loadAdminDashboard() {
       </div>
       <div class="stats-grid">
         ${renderStat('👷', `${report.attendance.present}/${report.attendance.total}`, 'Present / Total')}
-        ${renderStat('💰', formatMoney(report.expenses.total), 'Expenses Today')}
-        ${renderStat('📋', report.jobs.total, 'Jobs Today')}
+        ${renderStat('💰', formatMoney(report.expenses.total), 'Total Expenses')}
+        ${renderStat('👷‍♂️', formatMoney(report.expenses.laborExpense||0), 'Labour Today')}
+        ${renderStat('📄', formatMoney(report.pending||0), 'Pending (Udhar)')}
+        ${renderStat('📋', report.jobs.total + (report.bills?.total||0), 'Jobs/Bills Today')}
         ${renderStat('📈', formatMoney(report.profit), 'Profit Today')}
       </div>
+      ${report.bills?.records?.length ? `<div class="card"><div class="card-header"><h2>Pending Bills (Udhar)</h2></div>${renderTable(['Bill #','Customer','Total','Received','Pending'], report.bills.records.filter(b=>b.pending_amount>0).map(b=>`<tr><td>${b.bill_number}</td><td>${b.customer_name}</td><td>${formatMoney(b.total_amount)}</td><td>${formatMoney(b.received_amount)}</td><td style="color:#c62828">${formatMoney(b.pending_amount)}</td></tr>`), 'No pending bills')}</div>` : ''}
       <div class="card"><div class="card-header"><h2>Machines</h2></div>
         <div class="stats-grid">${machines.map(m => renderStat('🔧', m.name, m.status)).join('')}</div>
       </div>
@@ -414,11 +417,16 @@ async function loadAdminWorkers() {
         }), 'No workers')}
       </div>
       <div class="card" style="margin-top:16px">
-        <div class="card-header"><h2>Salary Summary (This Month)</h2><button class="btn btn-sm btn-primary" onclick="refreshWorkers()">Refresh</button></div>
+        <div class="card-header"><h2>Salary Summary (This Month) - Present × Rate</h2><button class="btn btn-sm btn-primary" onclick="refreshWorkers()">Refresh</button></div>
         <div id="worker-salary-summary">Loading...</div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h2>📋 Labour Expenses Records (Every payment saved with proof)</h2></div>
+        <div id="labour-expenses-log">Loading...</div>
       </div>`;
     window._workers = workers;
     loadWorkerSalarySummary();
+    loadLabourExpensesLog();
   } catch(e) { el.innerHTML = `<div class="card"><p style="color:red">Error loading workers: ${e.message}</p></div>`; }
 }
 
@@ -784,15 +792,23 @@ function showAdvance(workerId) {
         <div class="form-group"><label>Date</label><input type="date" id="adv-date" value="${today()}" required></div>
       </div>
       <div class="form-group"><label>Notes</label><input type="text" id="adv-notes" placeholder="Reason for advance"></div>
+      <div class="form-group"><label>Proof Attachment (Photo/Signature)</label><input type="file" id="adv-attachment" accept="image/*,application/pdf"></div>
       <div class="modal-actions"><button type="submit" class="btn btn-warning">Give Advance (will deduct from salary)</button></div>
     </form>`);
 }
 
 async function submitAdvance(e, workerId) {
   e.preventDefault();
-  const data = { worker_id: workerId, amount: parseFloat(document.getElementById('adv-amount').value), date: document.getElementById('adv-date').value, notes: document.getElementById('adv-notes').value };
+  const formData = new FormData();
+  formData.append('worker_id', workerId);
+  formData.append('amount', document.getElementById('adv-amount').value);
+  formData.append('date', document.getElementById('adv-date').value);
+  formData.append('notes', document.getElementById('adv-notes').value);
+  const file = document.getElementById('adv-attachment').files[0];
+  if (file) formData.append('attachment', file);
   try {
-    await apiCall('/api/advances', { method: 'POST', body: JSON.stringify(data) });
+    const res = await fetch('/api/advances', { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` }, body: formData });
+    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed'); }
     showToast('Advance ₹' + data.amount + ' given - will deduct from salary');
     document.querySelector('.modal-overlay').remove();
     sectionLoaded[activeSection] = false;
@@ -821,6 +837,7 @@ function showSalaryPayment(workerId) {
         <div class="form-group"><label>Mode</label><select id="sp-mode"><option value="cash">Cash</option><option value="upi">UPI</option><option value="bank">Bank Transfer</option></select></div>
       </div>
       <div class="form-group"><label>Notes</label><input type="text" id="sp-notes" placeholder="Optional"></div>
+      <div class="form-group"><label>Proof Attachment (Receipt/Signature)</label><input type="file" id="sp-attachment" accept="image/*,application/pdf"></div>
       <div class="modal-actions"><button type="submit" class="btn btn-primary">Record Payment</button></div>
     </form>`);
   loadSalaryWorkerSelect(workerId);
@@ -830,14 +847,42 @@ function showSalaryPayment(workerId) {
 
 async function submitSalaryPayment(e, existingWorkerId) {
   e.preventDefault();
-  const data = { worker_id: existingWorkerId || parseInt(document.getElementById('sp-worker').value), salary_period_from: document.getElementById('sp-from').value, salary_period_to: document.getElementById('sp-to').value, days_worked: parseInt(document.getElementById('sp-days').value), gross_salary: parseFloat(document.getElementById('sp-gross').value), advance_deducted: parseFloat(document.getElementById('sp-advance').value) || 0, net_paid: parseFloat(document.getElementById('sp-net').value), payment_date: document.getElementById('sp-date').value, payment_mode: document.getElementById('sp-mode').value, notes: document.getElementById('sp-notes').value };
+  const workerId = existingWorkerId || parseInt(document.getElementById('sp-worker').value);
+  const formData = new FormData();
+  formData.append('worker_id', workerId);
+  formData.append('salary_period_from', document.getElementById('sp-from').value);
+  formData.append('salary_period_to', document.getElementById('sp-to').value);
+  formData.append('days_worked', document.getElementById('sp-days').value);
+  formData.append('gross_salary', document.getElementById('sp-gross').value);
+  formData.append('advance_deducted', document.getElementById('sp-advance').value || 0);
+  formData.append('net_paid', document.getElementById('sp-net').value);
+  formData.append('payment_date', document.getElementById('sp-date').value);
+  formData.append('payment_mode', document.getElementById('sp-mode').value);
+  formData.append('notes', document.getElementById('sp-notes').value);
+  const file = document.getElementById('sp-attachment').files[0];
+  if (file) formData.append('attachment', file);
   try {
-    await apiCall('/api/salary-payments', { method: 'POST', body: JSON.stringify(data) });
-    showToast('Salary payment recorded!');
+    const res = await fetch('/api/salary-payments', { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` }, body: formData });
+    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed'); }
+    showToast('Salary payment recorded with proof!');
     document.querySelector('.modal-overlay').remove();
     sectionLoaded[activeSection] = false;
     loadSection(activeSection);
   } catch (err) { showToast('Error: ' + err.message); }
+}
+
+// Labour Expenses Full Log
+async function loadLabourExpensesLog() {
+  const el = document.getElementById('labour-expenses-log');
+  if (!el) return;
+  try {
+    const [advances, salaries] = await Promise.all([apiCall('/api/advances'), apiCall('/api/salary-payments')]);
+    const all = [
+      ...advances.map(a => ({ date: a.date, type: 'Advance', worker: a.worker_name, amount: a.amount, notes: a.notes, proof: a.attachment, id: a.id })),
+      ...salaries.map(s => ({ date: s.payment_date, type: 'Salary', worker: s.worker_name, amount: s.net_paid, notes: s.notes, proof: s.attachment, id: s.id }))
+    ].sort((a,b) => new Date(b.date) - new Date(a.date));
+    el.innerHTML = renderTable(['Date','Type','Worker','Amount','Notes','Proof'], all.map(r => `<tr><td>${formatDate(r.date)}</td><td><span class="badge badge-${r.type==='Advance'?'warning':'present'}">${r.type}</span></td><td>${r.worker}</td><td>${formatMoney(r.amount)}</td><td>${r.notes||'-'}</td><td>${r.proof ? `<a href="${r.proof}" target="_blank" class="btn btn-sm btn-primary">View</a>` : '-'}</td></tr>`), 'No labour expenses yet - every salary & advance saved here with proof');
+  } catch(e) { el.innerHTML = `<p style="color:red">Error: ${e.message}</p>`; }
 }
 
 async function loadAdminReports() {

@@ -1,7 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
 const { runQuery, getAll, getOne } = require('../database');
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+
+function toBase64(file) {
+  if (!file) return null;
+  return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'borwell_secret';
 
@@ -21,9 +30,10 @@ router.get('/', auth, (req, res) => {
   res.json(getAll(query, params));
 });
 
-router.post('/', auth, (req, res) => {
+router.post('/', auth, upload.single('attachment'), (req, res) => {
   const { worker_id, amount, date, notes } = req.body;
-  const result = runQuery('INSERT INTO advances (worker_id, amount, date, notes, given_by) VALUES (?, ?, ?, ?, ?)', [worker_id, amount, date, notes, req.user.id]);
+  const attachment = toBase64(req.file);
+  const result = runQuery('INSERT INTO advances (worker_id, amount, date, notes, attachment, given_by) VALUES (?, ?, ?, ?, ?, ?)', [worker_id, amount, date, notes, attachment, req.user.id]);
   if (req.app.get('broadcast')) req.app.get('broadcast')('advance:added', { id: result.lastInsertRowid, worker_id, amount });
   res.json({ id: result.lastInsertRowid, message: 'Advance recorded' });
 });

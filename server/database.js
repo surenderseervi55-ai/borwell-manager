@@ -144,6 +144,7 @@ async function getDb() {
     payment_date TEXT,
     payment_mode TEXT DEFAULT 'cash',
     notes TEXT,
+    attachment TEXT,
     paid_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (worker_id) REFERENCES workers(id)
@@ -155,6 +156,7 @@ async function getDb() {
     amount REAL NOT NULL,
     date TEXT NOT NULL,
     notes TEXT,
+    attachment TEXT,
     given_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (worker_id) REFERENCES workers(id)
@@ -164,6 +166,8 @@ async function getDb() {
   try { db.run(`ALTER TABLE expenses ADD COLUMN attachment TEXT`); } catch(e) {}
   try { db.run(`ALTER TABLE jobs ADD COLUMN received REAL DEFAULT 0`); } catch(e) {}
   try { db.run(`ALTER TABLE jobs ADD COLUMN pending REAL DEFAULT 0`); } catch(e) {}
+  try { db.run(`ALTER TABLE salary_payments ADD COLUMN attachment TEXT`); } catch(e) {}
+  try { db.run(`ALTER TABLE advances ADD COLUMN attachment TEXT`); } catch(e) {}
 
   saveDb();
   return db;

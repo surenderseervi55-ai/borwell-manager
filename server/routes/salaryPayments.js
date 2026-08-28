@@ -1,7 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
 const { runQuery, getAll, getOne } = require('../database');
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+
+function toBase64(file) {
+  if (!file) return null;
+  return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'borwell_secret';
 
@@ -52,10 +61,11 @@ router.get('/summary', auth, (req, res) => {
   res.json({ period: { from: f, to: t }, workers: summary });
 });
 
-router.post('/', auth, (req, res) => {
+router.post('/', auth, upload.single('attachment'), (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   const { worker_id, salary_period_from, salary_period_to, days_worked, gross_salary, advance_deducted, net_paid, payment_date, payment_mode, notes } = req.body;
-  const result = runQuery('INSERT INTO salary_payments (worker_id, salary_period_from, salary_period_to, days_worked, gross_salary, advance_deducted, net_paid, payment_date, payment_mode, notes, paid_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [worker_id, salary_period_from, salary_period_to, days_worked, gross_salary, advance_deducted || 0, net_paid, payment_date, payment_mode || 'cash', notes, req.user.id]);
+  const attachment = toBase64(req.file);
+  const result = runQuery('INSERT INTO salary_payments (worker_id, salary_period_from, salary_period_to, days_worked, gross_salary, advance_deducted, net_paid, payment_date, payment_mode, notes, attachment, paid_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [worker_id, salary_period_from, salary_period_to, days_worked, gross_salary, advance_deducted || 0, net_paid, payment_date, payment_mode || 'cash', notes, attachment, req.user.id]);
   if (req.app.get('broadcast')) req.app.get('broadcast')('salary:payment:added', { id: result.lastInsertRowid, worker_id });
   res.json({ id: result.lastInsertRowid, message: 'Salary payment recorded' });
 });

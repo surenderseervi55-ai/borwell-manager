@@ -43,10 +43,15 @@ router.get('/monthly', auth, (req, res) => {
   const jobs = getOne('SELECT SUM(amount) as total_income, COUNT(*) as total_jobs FROM jobs WHERE date BETWEEN ? AND ?', [from, to]);
   const attendance = getAll('SELECT status, COUNT(DISTINCT worker_id || date) as count FROM attendance WHERE date BETWEEN ? AND ? GROUP BY status', [from, to]);
 
-  const totalExpense = expenses.reduce((s, e) => s + (e.total || 0), 0);
-  const totalIncome = jobs?.total_income || 0;
+  const billsMonthly = getOne('SELECT SUM(received_amount) as total_received, SUM(pending_amount) as total_pending, COUNT(*) as count FROM bills WHERE date BETWEEN ? AND ?', [from, to]);
+  const salaryMonthly = getOne('SELECT SUM(net_paid) as total_paid FROM salary_payments WHERE payment_date BETWEEN ? AND ?', [from, to]);
+  const advancesMonthly = getOne('SELECT SUM(amount) as total_advance FROM advances WHERE date BETWEEN ? AND ?', [from, to]);
+  const laborTotal = (salaryMonthly?.total_paid || 0) + (advancesMonthly?.total_advance || 0);
+  const totalExpense = expenses.reduce((s, e) => s + (e.total || 0), 0) + laborTotal;
+  const billsIncome = billsMonthly?.total_received || 0;
+  const totalIncome = (jobs?.total_income || 0) + billsIncome;
 
-  res.json({ month: m, year: y, expenses, totalExpense, totalIncome, profit: totalIncome - totalExpense, jobs_count: jobs?.total_jobs || 0, attendance });
+  res.json({ month: m, year: y, expenses, totalExpense, laborExpense: laborTotal, totalIncome, billsIncome, billsPending: billsMonthly?.total_pending || 0, profit: totalIncome - totalExpense, jobs_count: jobs?.total_jobs || 0, bills_count: billsMonthly?.count || 0, attendance });
 });
 
 module.exports = router;
