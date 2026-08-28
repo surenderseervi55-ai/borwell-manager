@@ -393,17 +393,44 @@ async function updateMachine(e, id) {
 
 async function loadAdminWorkers() {
   const el = document.getElementById('admin-workers');
-  const workers = await apiCall('/api/workers');
-  el.innerHTML = `
-    <div class="card">
-      <div class="card-header"><h2>Workers</h2><button class="btn btn-primary btn-sm" onclick="showAddWorker()">+ Add Worker</button></div>
-      ${renderTable(['Name','Phone','Role','Machine','Status','Actions'], workers.map(w =>
-        `<tr><td>${w.name}</td><td>${w.phone||'-'}</td><td>${w.role}</td><td>${w.machine_name||'-'}</td><td>${renderBadge(w.active?'active':'absent')}</td>
-        <td><button class="btn btn-sm btn-primary" onclick='editWorker(${JSON.stringify(w).replace(/'/g,"&#39;")})'>Edit</button></td></tr>`
-      ), 'No workers')}
-    </div>`;
-  window._workers = workers;
+  try {
+    const [workers, salaryConfigs] = await Promise.all([apiCall('/api/workers'), apiCall('/api/salaries')]);
+    const salaryMap = {};
+    salaryConfigs.forEach(c => { if (!salaryMap[c.worker_id] || new Date(c.effective_from) > new Date(salaryMap[c.worker_id].effective_from)) salaryMap[c.worker_id] = c; });
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header"><h2>Workers & Salaries</h2><button class="btn btn-primary btn-sm" onclick="showAddWorker()">+ Add Worker</button></div>
+        ${renderTable(['Name','Phone','Role','Machine','Per Day','Salary','Status','Actions'], workers.map(w => {
+          const cfg = salaryMap[w.id];
+          const salaryInfo = cfg ? (cfg.salary_type === 'monthly' ? formatMoney(cfg.monthly_fixed) + '/mo' : formatMoney(cfg.per_day_rate) + '/day') : '<span style="color:#999">Not set</span>';
+          return `<tr><td>${w.name}</td><td>${w.phone||'-'}</td><td>${w.role}</td><td>${w.machine_name||'-'}</td><td>${cfg ? formatMoney(cfg.per_day_rate) : '-'}</td><td>${salaryInfo}</td><td>${renderBadge(w.active?'active':'absent')}</td>
+          <td>
+            <button class="btn btn-sm btn-primary" onclick='editWorker(${JSON.stringify(w).replace(/'/g,"&#39;")})'>Edit</button>
+            ${cfg ? `<button class="btn btn-sm btn-warning" onclick='editSalaryConfig(${JSON.stringify(cfg).replace(/'/g,"&#39;")})'>Salary</button>` : `<button class="btn btn-sm btn-success" onclick='showSalaryConfig(${w.id})'>+Salary</button>`}
+            <button class="btn btn-sm btn-success" onclick='showSalaryPayment(${w.id})'>Pay</button>
+          </td></tr>`;
+        }), 'No workers')}
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h2>Salary Summary (This Month)</h2><button class="btn btn-sm btn-primary" onclick="refreshWorkers()">Refresh</button></div>
+        <div id="worker-salary-summary">Loading...</div>
+      </div>`;
+    window._workers = workers;
+    loadWorkerSalarySummary();
+  } catch(e) { el.innerHTML = `<div class="card"><p style="color:red">Error loading workers: ${e.message}</p></div>`; }
 }
+
+async function loadWorkerSalarySummary() {
+  try {
+    const summary = await apiCall('/api/salary-payments/summary');
+    const container = document.getElementById('worker-salary-summary');
+    if (!container) return;
+    container.innerHTML = renderTable(['Worker','Days','Gross','Paid','Pending'], summary.workers.map(w => `
+      <tr><td>${w.name}</td><td>${w.days_worked}</td><td>${formatMoney(w.gross_salary)}</td><td>${formatMoney(w.paid)}</td><td style="color:${w.pending>0?'#c62828':'#2e7d32'}">${formatMoney(w.pending)}</td></tr>`).join(''), 'No salary data');
+  } catch(e) { console.error(e); }
+}
+
+function refreshWorkers() { sectionLoaded['admin-workers'] = false; loadAdminWorkers(); }
 
 function showAddWorker() {
   showModal('Add Worker', `

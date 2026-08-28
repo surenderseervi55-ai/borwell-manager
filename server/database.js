@@ -149,6 +149,11 @@ async function getDb() {
     FOREIGN KEY (worker_id) REFERENCES workers(id)
   )`);
 
+  // Migrations for old DBs
+  try { db.run(`ALTER TABLE expenses ADD COLUMN attachment TEXT`); } catch(e) {}
+  try { db.run(`ALTER TABLE jobs ADD COLUMN received REAL DEFAULT 0`); } catch(e) {}
+  try { db.run(`ALTER TABLE jobs ADD COLUMN pending REAL DEFAULT 0`); } catch(e) {}
+
   saveDb();
   return db;
 }
