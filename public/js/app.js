@@ -457,6 +457,7 @@ async function loadMachineSelect(selectId, selectedId) {
 
 async function loadAdminBills() {
   const el = document.getElementById('admin-bills');
+  try {
   const [bills, machines, workers] = await Promise.all([
     apiCall('/api/bills'),
     apiCall('/api/machines'),
@@ -481,6 +482,7 @@ async function loadAdminBills() {
         </tr>`;
       }).join(''), 'No bills')}
     </div>`;
+  } catch(e) { el.innerHTML = `<div class="card"><p style="color:red">Error loading bills: ${e.message}</p></div>`; console.error(e); }
 }
 
 async function filterBills() {
@@ -614,6 +616,7 @@ async function submitPayment(e, billId) {
 
 async function loadAdminSalaries() {
   const el = document.getElementById('admin-salaries');
+  try {
   const [summary, configs, workers] = await Promise.all([
     apiCall('/api/salary-payments/summary'),
     apiCall('/api/salaries'),
@@ -634,7 +637,7 @@ async function loadAdminSalaries() {
           <td>${cfg ? formatMoney(cfg.per_day_rate) : '-'}</td>
           <td>${cfg && cfg.salary_type === 'monthly' ? formatMoney(cfg.monthly_fixed) : '-'}</td>
           <td>${cfg ? formatDate(cfg.effective_from) : '-'}</td>
-          <td>${cfg ? `<button class="btn btn-sm btn-primary" onclick='editSalaryConfig(${JSON.stringify(cfg).replace(/'/g,"'")})'>Edit</button>` : `<button class="btn btn-sm btn-primary" onclick='showSalaryConfig(${w.id})'>Add</button>`}</td>
+          <td>${cfg ? `<button class="btn btn-sm btn-primary" onclick='editSalaryConfig(${JSON.stringify(cfg).replace(/'/g,"&#39;")})'>Edit</button>` : `<button class="btn btn-sm btn-primary" onclick='showSalaryConfig(${w.id})'>Add</button>`}</td>
         </tr>`;
       }).join(''), 'No active workers')}
     </div>
@@ -647,6 +650,7 @@ async function loadAdminSalaries() {
       </div>
       <div id="salary-payments-table">${renderSalaryPayments(summary.workers)}</div>
     </div>`;
+  } catch(e) { el.innerHTML = `<div class="card"><p style="color:red">Error loading salaries: ${e.message}</p></div>`; console.error(e); }
 }
 
 function renderSalaryPayments(workers) {
