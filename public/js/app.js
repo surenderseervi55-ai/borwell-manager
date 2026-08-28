@@ -66,7 +66,8 @@ function initSocket() {
                   'worker:added', 'worker:updated', 'worker:deleted',
                   'bill:added', 'bill:updated', 'bill:deleted', 'bill:payment',
                   'salary:config:added', 'salary:config:updated', 'salary:config:deleted',
-                  'salary:payment:added', 'salary:payment:updated', 'salary:payment:deleted'];
+                  'salary:payment:added', 'salary:payment:updated', 'salary:payment:deleted',
+                  'advance:added', 'advance:deleted'];
   events.forEach(ev => socket.on(ev, () => {
     if (activeSection) { sectionLoaded[activeSection] = false; loadSection(activeSection); }
   }));
@@ -407,6 +408,7 @@ async function loadAdminWorkers() {
           <td>
             <button class="btn btn-sm btn-primary" onclick='editWorker(${JSON.stringify(w).replace(/'/g,"&#39;")})'>Edit</button>
             ${cfg ? `<button class="btn btn-sm btn-warning" onclick='editSalaryConfig(${JSON.stringify(cfg).replace(/'/g,"&#39;")})'>Salary</button>` : `<button class="btn btn-sm btn-success" onclick='showSalaryConfig(${w.id})'>+Salary</button>`}
+            <button class="btn btn-sm btn-warning" onclick='showAdvance(${w.id})'>Advance</button>
             <button class="btn btn-sm btn-success" onclick='showSalaryPayment(${w.id})'>Pay</button>
           </td></tr>`;
         }), 'No workers')}
@@ -681,12 +683,13 @@ async function loadAdminSalaries() {
 }
 
 function renderSalaryPayments(workers) {
-  return renderTable(['Worker','Days','Gross','Paid','Pending','Actions'], workers.map(w => `
+  return renderTable(['Worker','Days','Gross','Advance','Paid','Pending','Actions'], workers.map(w => `
     <tr>
       <td>${w.name}</td><td>${w.days_worked}</td><td>${formatMoney(w.gross_salary)}</td>
+      <td style="color:#f57f17">${formatMoney(w.advance_taken||0)}</td>
       <td>${formatMoney(w.paid)}</td>
       <td style="color:${w.pending>0?'#c62828':'#2e7d32'}">${formatMoney(w.pending)}</td>
-      <td><button class="btn btn-sm btn-primary" onclick='showSalaryPayment(${w.id})'>Pay</button></td>
+      <td><button class="btn btn-sm btn-warning" onclick='showAdvance(${w.id})'>Advance</button> <button class="btn btn-sm btn-primary" onclick='showSalaryPayment(${w.id})'>Pay</button></td>
     </tr>`), 'No workers');
 }
 
@@ -770,6 +773,31 @@ function editSalaryConfig(cfg) {
     document.getElementById('sal-effective').value = cfg.effective_from;
     document.getElementById('sal-effective-to').value = cfg.effective_to || '';
   }, 150);
+}
+
+function showAdvance(workerId) {
+  showModal('Give Advance', `
+    <form onsubmit="submitAdvance(event, ${workerId})">
+      <div class="form-group"><label>Worker ID: ${workerId}</label></div>
+      <div class="form-row">
+        <div class="form-group"><label>Amount (₹)</label><input type="number" id="adv-amount" required min="1" step="0.01" placeholder="e.g. 100"></div>
+        <div class="form-group"><label>Date</label><input type="date" id="adv-date" value="${today()}" required></div>
+      </div>
+      <div class="form-group"><label>Notes</label><input type="text" id="adv-notes" placeholder="Reason for advance"></div>
+      <div class="modal-actions"><button type="submit" class="btn btn-warning">Give Advance (will deduct from salary)</button></div>
+    </form>`);
+}
+
+async function submitAdvance(e, workerId) {
+  e.preventDefault();
+  const data = { worker_id: workerId, amount: parseFloat(document.getElementById('adv-amount').value), date: document.getElementById('adv-date').value, notes: document.getElementById('adv-notes').value };
+  try {
+    await apiCall('/api/advances', { method: 'POST', body: JSON.stringify(data) });
+    showToast('Advance ₹' + data.amount + ' given - will deduct from salary');
+    document.querySelector('.modal-overlay').remove();
+    sectionLoaded[activeSection] = false;
+    loadSection(activeSection);
+  } catch (err) { showToast('Error: ' + err.message); }
 }
 
 function showSalaryPayment(workerId) {

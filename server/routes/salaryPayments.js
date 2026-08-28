@@ -33,17 +33,20 @@ router.get('/summary', auth, (req, res) => {
   
   const attendance = getAll(`SELECT worker_id, SUM(CASE WHEN status='present' THEN 1 WHEN status='half_day' THEN 0.5 ELSE 0 END) as days_present FROM attendance WHERE date BETWEEN ? AND ? GROUP BY worker_id`, [f, t]);
   const payments = getAll('SELECT worker_id, SUM(net_paid) as total_paid, SUM(advance_deducted) as total_advance FROM salary_payments WHERE payment_date BETWEEN ? AND ? GROUP BY worker_id', [f, t]);
+  const advances = getAll('SELECT worker_id, SUM(amount) as total_advance_taken FROM advances WHERE date BETWEEN ? AND ? GROUP BY worker_id', [f, t]);
   
   const attMap = Object.fromEntries(attendance.map(a => [a.worker_id, a.days_present]));
   const payMap = Object.fromEntries(payments.map(p => [p.worker_id, { paid: p.total_paid, advance: p.total_advance }]));
+  const advMap = Object.fromEntries(advances.map(a => [a.worker_id, a.total_advance_taken]));
   
   const summary = workers.map(w => {
     const days = attMap[w.id] || 0;
     const rate = w.per_day_rate || 0;
     const gross = w.salary_type === 'monthly' ? (w.monthly_fixed || 0) : (days * rate);
     const paid = (payMap[w.id]?.paid || 0) + (payMap[w.id]?.advance || 0);
-    const pending = gross - paid;
-    return { ...w, days_worked: days, gross_salary: gross, paid, pending };
+    const advanceTaken = advMap[w.id] || 0;
+    const pending = gross - paid - advanceTaken;
+    return { ...w, days_worked: days, gross_salary: gross, paid, advance_taken: advanceTaken, pending };
   });
   
   res.json({ period: { from: f, to: t }, workers: summary });

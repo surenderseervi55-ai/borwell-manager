@@ -53,6 +53,7 @@ app.use('/api/machines', require('./routes/machines'));
 app.use('/api/bills', require('./routes/bills'));
 app.use('/api/salaries', require('./routes/salaries'));
 app.use('/api/salary-payments', require('./routes/salaryPayments'));
+app.use('/api/advances', require('./routes/advances'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/api/sync', require('./routes/sync'));
