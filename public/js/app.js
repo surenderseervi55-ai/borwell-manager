@@ -134,6 +134,7 @@ async function loadAdminDashboard() {
         ${renderStat('📈', formatMoney(report.profit), 'Profit Today')}
       </div>
       ${report.bills?.records?.length ? `<div class="card"><div class="card-header"><h2>Pending Bills (Udhar)</h2></div>${renderTable(['Bill #','Customer','Total','Received','Pending'], report.bills.records.filter(b=>b.pending_amount>0).map(b=>`<tr><td>${b.bill_number}</td><td>${b.customer_name}</td><td>${formatMoney(b.total_amount)}</td><td>${formatMoney(b.received_amount)}</td><td style="color:#c62828">${formatMoney(b.pending_amount)}</td></tr>`), 'No pending bills')}</div>` : ''}
+      ${report.expenses.laborRecords?.length ? `<div class="card"><div class="card-header"><h2>👷‍♂️ Labour Expenses Today - Records with Proof</h2></div>${renderTable(['Date','Type','Worker','Amount','Proof'], report.expenses.laborRecords.map(r=>`<tr><td>${formatDate(r.date)}</td><td><span class="badge badge-${r.type==='Advance'?'warning':'present'}">${r.type}</span></td><td>${r.worker||'-'}</td><td>${formatMoney(r.amount)}</td><td>${r.proof ? `<a href="${r.proof}" target="_blank" class="btn btn-sm btn-primary">View Proof</a>` : '-'}</td></tr>`), 'No labour expenses today')}</div>` : ''}
       <div class="card"><div class="card-header"><h2>Machines</h2></div>
         <div class="stats-grid">${machines.map(m => renderStat('🔧', m.name, m.status)).join('')}</div>
       </div>
@@ -947,10 +948,11 @@ async function loadReportData() {
       const r = await apiCall(`/api/reports/daily?date=${date}`);
       content.innerHTML = `<div class="stats-grid">
         ${renderStat('✅', `${r.attendance.present}/${r.attendance.total}`, 'Present / Total')}
-        ${renderStat('💰', formatMoney(r.expenses.total), 'Expenses')}
+        ${renderStat('💰', formatMoney(r.expenses.total), 'Total Expenses')}
+        ${renderStat('👷‍♂️', formatMoney(r.expenses.laborExpense||0), 'Labour')}
         ${renderStat('📋', r.jobs.total, 'Jobs')}
         ${renderStat('📈', formatMoney(r.profit), 'Profit')}
-      </div>`;
+      </div>${r.expenses.laborRecords?.length ? `<div class="card"><h3 style="margin-bottom:10px">Labour Expenses Today</h3>${r.expenses.laborRecords.map(l=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee"><span>${l.type} - ${l.worker}</span><strong>${formatMoney(l.amount)}</strong> ${l.proof ? `<a href="${l.proof}" target="_blank" style="color:#1a237e">Proof</a>` : ''}</div>`).join('')}</div>` : ''}`;
     } else {
       document.getElementById('report-date-group').style.display = 'none';
       const now = new Date();
@@ -958,9 +960,11 @@ async function loadReportData() {
       content.innerHTML = `<div class="stats-grid">
         ${renderStat('💰', formatMoney(r.totalIncome), 'Income')}
         ${renderStat('💸', formatMoney(r.totalExpense), 'Expenses')}
+        ${renderStat('👷‍♂️', formatMoney(r.laborExpense||0), 'Labour')}
         ${renderStat('📈', formatMoney(r.profit), 'Net Profit')}
-        ${renderStat('📋', r.jobs_count, 'Jobs')}
-      </div><div class="card"><h3 style="margin-bottom:10px">Expense Breakdown</h3>${r.expenses.map(e => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee"><span>${e.category}</span><strong>${formatMoney(e.total)}</strong></div>`).join('')}</div>`;
+        ${renderStat('📋', r.jobs_count + (r.bills_count||0), 'Jobs/Bills')}
+        ${renderStat('📄', formatMoney(r.billsPending||0), 'Pending')}
+      </div><div class="card"><h3 style="margin-bottom:10px">Expense Breakdown</h3>${r.expenses.map(e => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee"><span>${e.category}</span><strong>${formatMoney(e.total)}</strong></div>`).join('')}<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #1a237e;margin-top:8px"><span><strong>Labour (Salary+Advance)</strong></span><strong>${formatMoney(r.laborExpense||0)}</strong></div></div>`;
     }
   } catch (err) { content.innerHTML = '<p>Error loading report</p>'; }
 }

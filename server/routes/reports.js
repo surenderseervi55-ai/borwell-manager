@@ -20,8 +20,8 @@ router.get('/daily', auth, (req, res) => {
   const jobs = getAll('SELECT j.*, m.name as machine_name FROM jobs j JOIN machines m ON j.machine_id = m.id WHERE j.date = ?', [d]);
 
   const bills = getAll('SELECT b.*, m.name as machine_name FROM bills b LEFT JOIN machines m ON b.machine_id = m.id WHERE b.date = ?', [d]);
-  const salaryPaid = getAll('SELECT * FROM salary_payments WHERE payment_date = ?', [d]);
-  const advances = getAll('SELECT * FROM advances WHERE date = ?', [d]);
+  const salaryPaid = getAll('SELECT sp.*, w.name as worker_name FROM salary_payments sp LEFT JOIN workers w ON sp.worker_id = w.id WHERE sp.payment_date = ?', [d]);
+  const advances = getAll('SELECT a.*, w.name as worker_name FROM advances a LEFT JOIN workers w ON a.worker_id = w.id WHERE a.date = ?', [d]);
   const laborExpense = salaryPaid.reduce((s, p) => s + (p.net_paid || 0) + (p.advance_deducted || 0), 0) + advances.reduce((s, a) => s + (a.amount || 0), 0);
   const totalExpense = expenses.reduce((s, e) => s + (e.amount || 0), 0) + laborExpense;
   const totalIncome = jobs.reduce((s, j) => s + (j.amount || 0), 0) + bills.reduce((s, b) => s + (b.received_amount || 0), 0);
@@ -29,7 +29,7 @@ router.get('/daily', auth, (req, res) => {
   const present = attendance.filter(a => a.status === 'present').length;
   const absent = attendance.filter(a => a.status === 'absent').length;
 
-  res.json({ date: d, attendance: { total: attendance.length, present, absent, records: attendance }, expenses: { total: totalExpense, records: expenses, laborExpense }, jobs: { total: jobs.length, income: totalIncome, records: jobs }, bills: { total: bills.length, received: bills.reduce((s,b)=>s+(b.received_amount||0),0), pending: totalPending, records: bills }, profit: totalIncome - totalExpense, pending: totalPending });
+  res.json({ date: d, attendance: { total: attendance.length, present, absent, records: attendance }, expenses: { total: totalExpense, records: expenses, laborExpense, laborRecords: [...salaryPaid.map(s=>({date:s.payment_date, type:'Salary', worker:s.worker_name, amount:s.net_paid, proof:s.attachment})), ...advances.map(a=>({date:a.date, type:'Advance', worker:a.worker_name, amount:a.amount, proof:a.attachment}))] }, jobs: { total: jobs.length, income: totalIncome, records: jobs }, bills: { total: bills.length, received: bills.reduce((s,b)=>s+(b.received_amount||0),0), pending: totalPending, records: bills }, profit: totalIncome - totalExpense, pending: totalPending });
 });
 
 router.get('/monthly', auth, (req, res) => {
