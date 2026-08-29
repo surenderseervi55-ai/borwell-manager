@@ -12,5 +12,8 @@ services:
         value: 3000
       - key: NODE_ENV
         value: production
-# Data persistence: SQLite file at server/borwell.db is gitignored and survives deploys via Render disk (add disk in Render dashboard: Settings → Disk → Add Disk → mount /opt/render/project/src/server, 1GB)
-# Automatic Drive backup: Set GOOGLE_SERVICE_ACCOUNT_KEY and GOOGLE_DRIVE_FOLDER_ID env vars to auto-backup on every deploy
+    disks:
+      - name: borwell-data
+        mountPath: /opt/render/project/src/server
+        sizeGB: 1
+# Data is persisted on disk + gitignored (never lost on git push). Free plan disk requires Starter plan ($7/mo) - alternatively set GOOGLE_SERVICE_ACCOUNT_KEY + GOOGLE_DRIVE_FOLDER_ID for free Drive backup/restore on every deploy.

@@ -599,7 +599,12 @@ async function loadAdminBills() {
           <td>${b.machine_name||'-'}</td><td>${formatMoney(b.total_amount)}</td><td>${formatMoney(b.received_amount)}</td>
           <td style="color:${b.pending_amount>0?'#c62828':'#2e7d32'}">${formatMoney(b.pending_amount)}</td>
           <td><span class="badge ${statusBadge}">${b.status}</span></td>
-          <td><button class="btn btn-sm btn-primary" onclick="viewBill(${b.id})">View</button> <button class="btn btn-sm btn-success" onclick="addPayment(${b.id}, ${b.pending_amount})">Payment</button></td>
+          <td>
+            <button class="btn btn-sm btn-primary" onclick="viewBill(${b.id})">View</button>
+            <button class="btn btn-sm btn-warning" onclick='editBill(${JSON.stringify(b).replace(/'/g,"&#39;")})'>Edit</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteBill(${b.id})">Delete</button>
+            <button class="btn btn-sm btn-success" onclick="addPayment(${b.id}, ${b.pending_amount})">Payment</button>
+          </td>
         </tr>`;
       }), 'No bills')}
     </div>`;
@@ -622,7 +627,12 @@ async function filterBills() {
       <td>${b.machine_name||'-'}</td><td>${formatMoney(b.total_amount)}</td><td>${formatMoney(b.received_amount)}</td>
       <td style="color:${b.pending_amount>0?'#c62828':'#2e7d32'}">${formatMoney(b.pending_amount)}</td>
       <td><span class="badge ${statusBadge}">${b.status}</span></td>
-      <td><button class="btn btn-sm btn-primary" onclick="viewBill(${b.id})">View</button> <button class="btn btn-sm btn-success" onclick="addPayment(${b.id}, ${b.pending_amount})">Payment</button></td>
+      <td>
+        <button class="btn btn-sm btn-primary" onclick="viewBill(${b.id})">View</button>
+        <button class="btn btn-sm btn-warning" onclick='editBill(${JSON.stringify(b).replace(/'/g,"&#39;")})'>Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteBill(${b.id})">Delete</button>
+        <button class="btn btn-sm btn-success" onclick="addPayment(${b.id}, ${b.pending_amount})">Payment</button>
+      </td>
     </tr>`;
   }).join('') || '<tr><td colspan="10" class="empty-state">No bills</td></tr>';
 }
@@ -675,6 +685,43 @@ async function submitBill(e) {
     sectionLoaded[activeSection] = false;
     loadSection(activeSection);
   } catch (err) { showToast('Error: ' + err.message); }
+}
+
+function editBill(b) {
+  showModal('Edit Bill - ' + b.bill_number, `
+    <form onsubmit="updateBill(event, ${b.id})">
+      <div class="form-row">
+        <div class="form-group"><label>Date</label><input type="date" id="bill-date" value="${b.date}" required></div>
+        <div class="form-group"><label>Bill #</label><input type="text" value="${b.bill_number}" readonly style="background:#f5f5f5"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Customer Name</label><input type="text" id="bill-customer" value="${b.customer_name}" required></div>
+        <div class="form-group"><label>Customer Phone</label><input type="tel" id="bill-phone" value="${b.customer_phone||''}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Total Amount (₹)</label><input type="number" id="bill-total" value="${b.total_amount}" required min="0" step="0.01"></div>
+        <div class="form-group"><label>Received (₹)</label><input type="number" id="bill-received" value="${b.received_amount}" min="0" step="0.01"></div>
+      </div>
+      <div class="form-group"><label>Notes</label><input type="text" id="bill-notes" value="${b.notes||''}"></div>
+      <div class="modal-actions"><button type="submit" class="btn btn-primary">Update Bill</button></div>
+    </form>`);
+}
+
+async function updateBill(e, id) {
+  e.preventDefault();
+  const data = { date: document.getElementById('bill-date').value, customer_name: document.getElementById('bill-customer').value, customer_phone: document.getElementById('bill-phone').value, total_amount: parseFloat(document.getElementById('bill-total').value), received_amount: parseFloat(document.getElementById('bill-received').value) || 0, notes: document.getElementById('bill-notes').value };
+  try {
+    await apiCall('/api/bills/' + id, { method: 'PUT', body: JSON.stringify(data) });
+    showToast('Bill updated!');
+    document.querySelector('.modal-overlay').remove();
+    sectionLoaded[activeSection] = false;
+    loadSection(activeSection);
+  } catch (err) { showToast('Error: ' + err.message); }
+}
+
+async function deleteBill(id) {
+  if (!confirm('Delete this bill? All payments will also be deleted.')) return;
+  try { await apiCall('/api/bills/' + id, { method: 'DELETE' }); showToast('Bill deleted'); sectionLoaded[activeSection]=false; loadSection(activeSection); } catch(e) { showToast('Error: '+e.message); }
 }
 
 async function viewBill(id) {
