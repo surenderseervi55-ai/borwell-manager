@@ -143,20 +143,48 @@ function refreshAll() {
 
 async function loadAdminAttendance() {
   const el = document.getElementById('admin-attendance');
-  const workers = await apiCall('/api/workers');
-  const records = await apiCall(`/api/attendance?date=${today()}`);
+  const [workers, records, autoSetting] = await Promise.all([
+    apiCall('/api/workers'),
+    apiCall(`/api/attendance?date=${today()}`),
+    apiCall('/api/attendance/settings/auto-present').catch(()=>({enabled:true}))
+  ]);
+  const autoOn = autoSetting.enabled;
   el.innerHTML = `
     <div class="card">
-      <div class="card-header"><h2>Attendance</h2><button class="btn btn-primary btn-sm" onclick="showMarkAttendance()">+ Mark Attendance</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+        <h2>Attendance ${autoOn ? '<span style="color:#2e7d32;font-size:12px">● Auto Present ON - Every labour auto-marked present</span>' : '<span style="color:#c62828;font-size:12px">● Auto Present OFF - Attendance stopped</span>'}</h2>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${autoOn?'checked':''} onchange="toggleAutoPresent(this.checked)"> Auto Present</label>
+      </div>
+      ${autoOn ? `<div style="margin-bottom:12px"><button class="btn btn-success btn-sm" onclick="autoPresentAll()">⚡ Auto Present All Labour Today (${workers.filter(w=>w.active).length} workers)</button> <small style="color:#666">Marks every active labour as Present for today</small></div>` : `<div style="padding:12px;background:#ffebee;border-radius:8px;margin-bottom:12px;color:#c62828">Attendance is stopped - Enable Auto Present to mark all labour as present automatically. Manual marking disabled.</div>`}
+      <div class="card-header"><h2>Records</h2>${autoOn ? `<button class="btn btn-primary btn-sm" onclick="showMarkAttendance()">+ Mark Attendance</button>` : ''}</div>
       <div class="filter-bar">
         <div class="form-group"><label>Date</label><input type="date" id="att-filter-date" value="${today()}" onchange="filterAttendance()"></div>
       </div>
-      ${renderTable(['Worker','Date','In','Out','Status','Notes','Actions'], records.map(r =>
+      ${autoOn ? renderTable(['Worker','Date','In','Out','Status','Notes','Actions'], records.map(r =>
         `<tr><td>${r.worker_name}</td><td>${formatDate(r.date)}</td><td>${r.check_in||'-'}</td><td>${r.check_out||'-'}</td><td>${renderBadge(r.status)}</td><td>${r.notes||'-'}</td>
         <td><button class="btn btn-sm btn-primary" onclick="editAttendance(${r.id},'${r.date}','${r.check_in||''}','${r.check_out||''}','${r.status}','${(r.notes||'').replace(/'/g,"\\'")}')">Edit</button></td></tr>`
-      ), 'No attendance records')}
+      ), 'No attendance records - Click Auto Present All to mark all present') : '<p style="text-align:center;padding:20px;color:#999">Attendance stopped</p>'}
     </div>`;
   window._workers = workers;
+}
+
+async function toggleAutoPresent(enabled) {
+  try {
+    await apiCall('/api/attendance/settings/auto-present', { method: 'PUT', body: JSON.stringify({ enabled }) });
+    showToast(enabled ? 'Auto Present ON - Every labour will be auto-marked present' : 'Auto Present OFF - Attendance stopped');
+    sectionLoaded['admin-attendance'] = false;
+    loadAdminAttendance();
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+async function autoPresentAll() {
+  const date = document.getElementById('att-filter-date')?.value || today();
+  try {
+    const res = await apiCall('/api/attendance/auto-present', { method: 'POST', body: JSON.stringify({ date }) });
+    showToast(res.message);
+    sectionLoaded['admin-attendance'] = false;
+    loadAdminAttendance();
+  } catch(e) { showToast('Error: ' + e.message); }
 }
 
 async function filterAttendance() {
@@ -973,17 +1001,22 @@ async function loadManagerDashboard() {
 
 async function loadManagerAttendance() {
   const el = document.getElementById('manager-attendance');
-  const workers = await apiCall('/api/workers');
+  const [workers, records, autoSetting] = await Promise.all([
+    apiCall('/api/workers'),
+    apiCall(`/api/attendance?date=${today()}`),
+    apiCall('/api/attendance/settings/auto-present').catch(()=>({enabled:true}))
+  ]);
+  const autoOn = autoSetting.enabled;
   window._workers = workers;
-  const records = await apiCall(`/api/attendance?date=${today()}`);
   el.innerHTML = `
     <div class="card">
-      <div class="card-header"><h2>Edit Attendance</h2><button class="btn btn-primary btn-sm" onclick="showMarkAttendance()">+ Mark</button></div>
+      <div style="margin-bottom:12px">${autoOn ? '<span style="color:#2e7d32;font-size:13px">● Auto Present ON - Every labour auto-marked present</span> <button class="btn btn-success btn-sm" style="margin-left:12px" onclick="autoPresentAll()">⚡ Auto Present All</button>' : '<span style="color:#c62828">● Attendance stopped by Admin</span>'}</div>
+      <div class="card-header"><h2>Edit Attendance</h2>${autoOn ? `<button class="btn btn-primary btn-sm" onclick="showMarkAttendance()">+ Mark</button>` : ''}</div>
       <div class="filter-bar"><div class="form-group"><input type="date" id="att-filter-date" value="${today()}" onchange="filterManagerAttendance()"></div></div>
-      ${renderTable(['Worker','Date','In','Out','Status','Actions'], records.map(r =>
+      ${autoOn ? renderTable(['Worker','Date','In','Out','Status','Actions'], records.map(r =>
         `<tr><td>${r.worker_name}</td><td>${formatDate(r.date)}</td><td>${r.check_in||'-'}</td><td>${r.check_out||'-'}</td><td>${renderBadge(r.status)}</td>
         <td><button class="btn btn-sm btn-primary" onclick="editAttendance(${r.id},'${r.date}','${r.check_in||''}','${r.check_out||''}','${r.status}','${(r.notes||'').replace(/'/g,"\\'")}')">Edit</button></td></tr>`
-      ), 'No records')}
+      ), 'No records - will auto-present on load') : '<p style="text-align:center;padding:20px;color:#999">Attendance stopped - contact Admin to enable Auto Present</p>'}
     </div>`;
 }
 

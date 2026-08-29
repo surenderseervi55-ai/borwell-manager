@@ -162,6 +162,18 @@ async function getDb() {
     FOREIGN KEY (worker_id) REFERENCES workers(id)
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  )`);
+  // Default: auto-present enabled
+  try {
+    const exists = db.exec(`SELECT value FROM settings WHERE key='auto_present'`);
+    if (!exists.length || !exists[0].values.length) {
+      db.run(`INSERT INTO settings (key, value) VALUES ('auto_present', '1')`);
+    }
+  } catch(e) {}
+
   // Migrations for old DBs
   try { db.run(`ALTER TABLE expenses ADD COLUMN attachment TEXT`); } catch(e) {}
   try { db.run(`ALTER TABLE jobs ADD COLUMN received REAL DEFAULT 0`); } catch(e) {}
