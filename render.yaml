@@ -10,3 +10,7 @@ services:
         generateValue: true
       - key: PORT
         value: 3000
+      - key: NODE_ENV
+        value: production
+# Data persistence: SQLite file at server/borwell.db is gitignored and survives deploys via Render disk (add disk in Render dashboard: Settings → Disk → Add Disk → mount /opt/render/project/src/server, 1GB)
+# Automatic Drive backup: Set GOOGLE_SERVICE_ACCOUNT_KEY and GOOGLE_DRIVE_FOLDER_ID env vars to auto-backup on every deploy
