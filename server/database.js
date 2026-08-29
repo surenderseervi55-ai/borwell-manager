@@ -192,7 +192,52 @@ async function getDb() {
   try { db.run(`ALTER TABLE advances ADD COLUMN attachment TEXT`); } catch(e) {}
 
   saveDb();
+
+  // Auto-restore from Drive backup if local DB is empty (fresh deploy on Render free tier)
+  try {
+    const userCount = db.exec(`SELECT COUNT(*) as c FROM users`)[0]?.values[0][0] || 0;
+    if (userCount === 0) {
+      const restored = await tryRestoreFromDrive();
+      if (restored) {
+        console.log('Restored DB from Drive backup');
+        saveDb();
+      }
+    }
+  } catch(e) { console.log('Restore check failed:', e.message); }
+
   return db;
+}
+
+async function tryRestoreFromDrive() {
+  try {
+    const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+    if (!keyPath || keyPath === 'path_to_service_account.json' || !folderId || folderId === 'your_folder_id_here') return false;
+    if (!fs.existsSync(keyPath)) return false;
+    const { google } = require('googleapis');
+    const auth = new google.auth.GoogleAuth({ keyFile: keyPath, scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
+    const drive = google.drive({ version: 'v3', auth });
+    const res = await drive.files.list({ q: `'${folderId}' in parents and name contains 'borwell_backup' and trashed=false`, orderBy: 'createdTime desc', pageSize: 1, fields: 'files(id, name)' });
+    if (!res.data.files.length) return false;
+    const fileId = res.data.files[0].id;
+    const file = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
+    const data = JSON.parse(Buffer.from(file.data).toString());
+    if (!data.workers && !data.bills) return false;
+    // Restore
+    if (data.users) { db.run('DELETE FROM users'); for (const u of data.users) db.run('INSERT INTO users (id, username, password, fullname, role, phone, created_at) VALUES (?,?,?,?,?,?,?)', [u.id, u.username, u.password, u.fullname, u.role, u.phone, u.created_at]); }
+    if (data.workers) { db.run('DELETE FROM workers'); for (const w of data.workers) db.run('INSERT INTO workers (id, name, phone, role, machine_id, active, created_at) VALUES (?,?,?,?,?,?,?)', [w.id, w.name, w.phone, w.role, w.machine_id, w.active, w.created_at]); }
+    if (data.machines) { db.run('DELETE FROM machines'); for (const m of data.machines) db.run('INSERT INTO machines (id, name, type, status, created_at) VALUES (?,?,?,?,?)', [m.id, m.name, m.type, m.status, m.created_at]); }
+    if (data.attendance) { db.run('DELETE FROM attendance'); for (const a of data.attendance) db.run('INSERT INTO attendance (id, worker_id, date, check_in, check_out, status, notes, marked_by, created_at) VALUES (?,?,?,?,?,?,?,?,?)', [a.id, a.worker_id, a.date, a.check_in, a.check_out, a.status, a.notes, a.marked_by, a.created_at]); }
+    if (data.expenses) { db.run('DELETE FROM expenses'); for (const e of data.expenses) db.run('INSERT INTO expenses (id, date, category, amount, description, machine_id, added_by, attachment, created_at) VALUES (?,?,?,?,?,?,?,?,?)', [e.id, e.date, e.category, e.amount, e.description, e.machine_id, e.added_by, e.attachment, e.created_at]); }
+    if (data.jobs) { db.run('DELETE FROM jobs'); for (const j of data.jobs) db.run('INSERT INTO jobs (id, date, machine_id, customer_name, location, work_description, depth_feet, status, amount, received, pending, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [j.id, j.date, j.machine_id, j.customer_name, j.location, j.work_description, j.depth_feet, j.status, j.amount, j.received, j.pending, j.created_by, j.created_at]); }
+    if (data.bills) { db.run('DELETE FROM bills'); for (const b of data.bills) db.run('INSERT INTO bills (id, bill_number, date, customer_name, customer_phone, machine_id, job_id, total_amount, received_amount, pending_amount, status, notes, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [b.id, b.bill_number, b.date, b.customer_name, b.customer_phone, b.machine_id, b.job_id, b.total_amount, b.received_amount, b.pending_amount, b.status, b.notes, b.created_by, b.created_at]); }
+    if (data.bill_payments) { try { db.run('DELETE FROM bill_payments'); for (const bp of data.bill_payments) db.run('INSERT INTO bill_payments (id, bill_id, amount, payment_date, payment_mode, notes, received_by, created_at) VALUES (?,?,?,?,?,?,?,?)', [bp.id, bp.bill_id, bp.amount, bp.payment_date, bp.payment_mode, bp.notes, bp.received_by, bp.created_at]); } catch(e){} }
+    if (data.worker_salaries) { try { db.run('DELETE FROM worker_salaries'); for (const ws of data.worker_salaries) db.run('INSERT INTO worker_salaries (id, worker_id, per_day_rate, monthly_fixed, salary_type, effective_from, effective_to, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?)', [ws.id, ws.worker_id, ws.per_day_rate, ws.monthly_fixed, ws.salary_type, ws.effective_from, ws.effective_to, ws.created_by, ws.created_at]); } catch(e){} }
+    if (data.salary_payments) { try { db.run('DELETE FROM salary_payments'); for (const sp of data.salary_payments) db.run('INSERT INTO salary_payments (id, worker_id, salary_period_from, salary_period_to, days_worked, gross_salary, advance_deducted, net_paid, payment_date, payment_mode, notes, attachment, paid_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [sp.id, sp.worker_id, sp.salary_period_from, sp.salary_period_to, sp.days_worked, sp.gross_salary, sp.advance_deducted, sp.net_paid, sp.payment_date, sp.payment_mode, sp.notes, sp.attachment, sp.paid_by, sp.created_at]); } catch(e){} }
+    if (data.advances) { try { db.run('DELETE FROM advances'); for (const a of data.advances) db.run('INSERT INTO advances (id, worker_id, amount, date, notes, attachment, given_by, created_at) VALUES (?,?,?,?,?,?,?,?)', [a.id, a.worker_id, a.amount, a.date, a.notes, a.attachment, a.given_by, a.created_at]); } catch(e){} }
+    if (data.capital) { db.run('DELETE FROM capital'); for (const c of data.capital) db.run('INSERT INTO capital (id, date, amount, source, description, added_by, created_at) VALUES (?,?,?,?,?,?,?)', [c.id, c.date, c.amount, c.source, c.description, c.added_by, c.created_at]); }
+    return true;
+  } catch(e) { console.log('Drive restore failed:', e.message); return false; }
 }
 
 function saveDb() {
