@@ -848,7 +848,8 @@ async function submitAdvance(e, workerId) {
   try {
     const res = await fetch('/api/advances', { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` }, body: formData });
     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed'); }
-    showToast('Advance ₹' + data.amount + ' given - will deduct from salary');
+    const amount = document.getElementById('adv-amount').value;
+    showToast('Advance ₹' + amount + ' given - will deduct from salary');
     document.querySelector('.modal-overlay').remove();
     sectionLoaded[activeSection] = false;
     loadSection(activeSection);
