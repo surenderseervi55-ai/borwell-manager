@@ -69,7 +69,17 @@ function initSocket() {
                   'salary:payment:added', 'salary:payment:updated', 'salary:payment:deleted',
                   'advance:added', 'advance:deleted'];
   events.forEach(ev => socket.on(ev, () => {
+    // Always invalidate dashboard & reports so labour expenses show even without attendance
+    sectionLoaded['admin-dashboard'] = false;
+    sectionLoaded['manager-dashboard'] = false;
+    sectionLoaded['admin-reports'] = false;
+    // Invalidate workers salary summary as it depends on attendance & labour
+    sectionLoaded['admin-workers'] = false;
     if (activeSection) { sectionLoaded[activeSection] = false; loadSection(activeSection); }
+    // If dashboard is visible in background, also refresh it silently
+    if (activeSection !== 'admin-dashboard' && document.getElementById('admin-dashboard')?.classList.contains('active')) {
+      loadAdminDashboard().catch(()=>{});
+    }
   }));
 }
 
