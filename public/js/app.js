@@ -124,6 +124,37 @@ function initSocket() {
       loadAdminDashboard().catch(()=>{});
     }
   }));
+  socket.on('data:restored', (data) => {
+    showToast('Data restored by ' + (data?.by || 'admin') + ' - auto-loading updated data...');
+    Object.keys(sectionLoaded).forEach(k => sectionLoaded[k] = false);
+    if (activeSection) loadSection(activeSection);
+    setTimeout(() => { if (confirm('Data has been restored - reload to see updated data?')) location.reload(); }, 1000);
+  });
+}
+
+let autoSaveInterval = null;
+function startAutoSave() {
+  if (autoSaveInterval) clearInterval(autoSaveInterval);
+  autoSaveInterval = setInterval(async () => {
+    try {
+      // Auto-save: refresh current data so local and online stay in sync - every 1 min
+      if (activeSection) {
+        sectionLoaded[activeSection] = false;
+        await loadSection(activeSection);
+        // Also ensure dashboard is fresh in background
+        sectionLoaded['admin-dashboard'] = false;
+        sectionLoaded['manager-dashboard'] = false;
+        console.log('Auto-saved & auto-loaded latest data at', new Date().toLocaleTimeString());
+      }
+    } catch(e) { console.log('Auto-save failed', e.message); }
+  }, 60000); // 1 minute
+  // Also auto-load when tab becomes visible again (e.g., after switching apps)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && activeSection) {
+      sectionLoaded[activeSection] = false;
+      loadSection(activeSection);
+    }
+  });
 }
 
 const sectionLoaded = {};
@@ -1356,10 +1387,12 @@ function showDashboard(user) {
     loadSection('manager-dashboard');
   }
   initSocket();
+  startAutoSave();
 }
 
 function logout() {
   if (socket) socket.disconnect();
+  if (autoSaveInterval) { clearInterval(autoSaveInterval); autoSaveInterval = null; }
   authToken = null;
   currentUser = null;
   localStorage.removeItem('borwell_token');

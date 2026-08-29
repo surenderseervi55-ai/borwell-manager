@@ -120,7 +120,9 @@ router.post('/restore', auth, (req, res) => {
       runQuery('DELETE FROM capital');
       for (const c of data.capital) runQuery('INSERT INTO capital (id, date, amount, source, description, added_by, created_at) VALUES (?,?,?,?,?,?,?)', [c.id, c.date, c.amount, c.source, c.description, c.added_by, c.created_at]);
     }
-    res.json({ message: 'Data restored successfully - all records including proofs restored, no data lost' });
+    if (req.app.get('broadcast')) req.app.get('broadcast')('data:restored', { by: req.user.fullname });
+    if (req.app.get('io')) req.app.get('io').emit('data:restored', { by: req.user.fullname });
+    res.json({ message: 'Data restored successfully - all records including proofs restored, no data lost. All devices will auto-load.' });
   } catch (err) {
     res.status(500).json({ error: 'Restore failed: ' + err.message });
   }
