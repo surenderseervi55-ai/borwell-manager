@@ -22,14 +22,16 @@ router.get('/daily', auth, (req, res) => {
   const bills = getAll('SELECT b.*, m.name as machine_name FROM bills b LEFT JOIN machines m ON b.machine_id = m.id WHERE b.date = ?', [d]);
   const salaryPaid = getAll('SELECT sp.*, w.name as worker_name FROM salary_payments sp LEFT JOIN workers w ON sp.worker_id = w.id WHERE sp.payment_date = ?', [d]);
   const advances = getAll('SELECT a.*, w.name as worker_name FROM advances a LEFT JOIN workers w ON a.worker_id = w.id WHERE a.date = ?', [d]);
+  const capital = getAll('SELECT * FROM capital WHERE date = ?', [d]);
   const laborExpense = salaryPaid.reduce((s, p) => s + (p.net_paid || 0) + (p.advance_deducted || 0), 0) + advances.reduce((s, a) => s + (a.amount || 0), 0);
   const totalExpense = expenses.reduce((s, e) => s + (e.amount || 0), 0) + laborExpense;
-  const totalIncome = jobs.reduce((s, j) => s + (j.amount || 0), 0) + bills.reduce((s, b) => s + (b.received_amount || 0), 0);
+  const capitalTotal = capital.reduce((s, c) => s + (c.amount || 0), 0);
+  const totalIncome = jobs.reduce((s, j) => s + (j.amount || 0), 0) + bills.reduce((s, b) => s + (b.received_amount || 0), 0) + capitalTotal;
   const totalPending = bills.reduce((s, b) => s + (b.pending_amount || 0), 0) + jobs.reduce((s, j) => s + (j.pending || 0), 0);
   const present = attendance.filter(a => a.status === 'present').length;
   const absent = attendance.filter(a => a.status === 'absent').length;
 
-  res.json({ date: d, attendance: { total: attendance.length, present, absent, records: attendance }, expenses: { total: totalExpense, records: expenses, laborExpense, laborRecords: [...salaryPaid.map(s=>({date:s.payment_date, type:'Salary', worker:s.worker_name, amount:s.net_paid, proof:s.attachment})), ...advances.map(a=>({date:a.date, type:'Advance', worker:a.worker_name, amount:a.amount, proof:a.attachment}))] }, jobs: { total: jobs.length, income: totalIncome, records: jobs }, bills: { total: bills.length, received: bills.reduce((s,b)=>s+(b.received_amount||0),0), pending: totalPending, records: bills }, profit: totalIncome - totalExpense, pending: totalPending });
+  res.json({ date: d, attendance: { total: attendance.length, present, absent, records: attendance }, expenses: { total: totalExpense, records: expenses, laborExpense, laborRecords: [...salaryPaid.map(s=>({date:s.payment_date, type:'Salary', worker:s.worker_name, amount:s.net_paid, proof:s.attachment})), ...advances.map(a=>({date:a.date, type:'Advance', worker:a.worker_name, amount:a.amount, proof:a.attachment}))] }, jobs: { total: jobs.length, income: totalIncome, records: jobs }, bills: { total: bills.length, received: bills.reduce((s,b)=>s+(b.received_amount||0),0), pending: totalPending, records: bills }, capital: { total: capitalTotal, records: capital }, profit: totalIncome - totalExpense, pending: totalPending });
 });
 
 router.get('/monthly', auth, (req, res) => {
@@ -46,12 +48,14 @@ router.get('/monthly', auth, (req, res) => {
   const billsMonthly = getOne('SELECT SUM(received_amount) as total_received, SUM(pending_amount) as total_pending, COUNT(*) as count FROM bills WHERE date BETWEEN ? AND ?', [from, to]);
   const salaryMonthly = getOne('SELECT SUM(net_paid) as total_paid FROM salary_payments WHERE payment_date BETWEEN ? AND ?', [from, to]);
   const advancesMonthly = getOne('SELECT SUM(amount) as total_advance FROM advances WHERE date BETWEEN ? AND ?', [from, to]);
+  const capitalMonthly = getOne('SELECT SUM(amount) as total_capital FROM capital WHERE date BETWEEN ? AND ?', [from, to]);
   const laborTotal = (salaryMonthly?.total_paid || 0) + (advancesMonthly?.total_advance || 0);
+  const capitalTotal = capitalMonthly?.total_capital || 0;
   const totalExpense = expenses.reduce((s, e) => s + (e.total || 0), 0) + laborTotal;
   const billsIncome = billsMonthly?.total_received || 0;
-  const totalIncome = (jobs?.total_income || 0) + billsIncome;
+  const totalIncome = (jobs?.total_income || 0) + billsIncome + capitalTotal;
 
-  res.json({ month: m, year: y, expenses, totalExpense, laborExpense: laborTotal, totalIncome, billsIncome, billsPending: billsMonthly?.total_pending || 0, profit: totalIncome - totalExpense, jobs_count: jobs?.total_jobs || 0, bills_count: billsMonthly?.count || 0, attendance });
+  res.json({ month: m, year: y, expenses, totalExpense, laborExpense: laborTotal, capitalTotal, totalIncome, billsIncome, billsPending: billsMonthly?.total_pending || 0, profit: totalIncome - totalExpense, jobs_count: jobs?.total_jobs || 0, bills_count: billsMonthly?.count || 0, attendance });
 });
 
 router.get('/range', auth, (req, res) => {
@@ -62,12 +66,14 @@ router.get('/range', auth, (req, res) => {
   const billsRange = getOne('SELECT SUM(received_amount) as total_received, SUM(pending_amount) as total_pending, COUNT(*) as count FROM bills WHERE date BETWEEN ? AND ?', [from, to]);
   const salaryRange = getOne('SELECT SUM(net_paid) as total_paid, SUM(advance_deducted) as total_deducted FROM salary_payments WHERE payment_date BETWEEN ? AND ?', [from, to]);
   const advancesRange = getOne('SELECT SUM(amount) as total_advance FROM advances WHERE date BETWEEN ? AND ?', [from, to]);
+  const capitalRange = getOne('SELECT SUM(amount) as total_capital FROM capital WHERE date BETWEEN ? AND ?', [from, to]);
   const attendance = getAll('SELECT status, COUNT(*) as count FROM attendance WHERE date BETWEEN ? AND ? GROUP BY status', [from, to]);
   const laborTotal = (salaryRange?.total_paid || 0) + (salaryRange?.total_deducted || 0) + (advancesRange?.total_advance || 0);
+  const capitalTotal = capitalRange?.total_capital || 0;
   const totalExpense = expenses.reduce((s, e) => s + (e.total || 0), 0) + laborTotal;
-  const totalIncome = (jobs?.total_income || 0) + (billsRange?.total_received || 0);
+  const totalIncome = (jobs?.total_income || 0) + (billsRange?.total_received || 0) + capitalTotal;
   const totalPending = billsRange?.total_pending || 0;
-  res.json({ from, to, expenses, totalExpense, laborExpense: laborTotal, totalIncome, billsIncome: billsRange?.total_received || 0, billsPending: totalPending, profit: totalIncome - totalExpense, jobs_count: jobs?.total_jobs || 0, bills_count: billsRange?.count || 0, attendance, present: attendance.find(a=>a.status==='present')?.count||0 });
+  res.json({ from, to, expenses, totalExpense, laborExpense: laborTotal, capitalTotal, totalIncome, billsIncome: billsRange?.total_received || 0, billsPending: totalPending, profit: totalIncome - totalExpense, jobs_count: jobs?.total_jobs || 0, bills_count: billsRange?.count || 0, attendance, present: attendance.find(a=>a.status==='present')?.count||0 });
 });
 
 module.exports = router;

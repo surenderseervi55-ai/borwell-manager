@@ -67,7 +67,8 @@ function initSocket() {
                   'bill:added', 'bill:updated', 'bill:deleted', 'bill:payment',
                   'salary:config:added', 'salary:config:updated', 'salary:config:deleted',
                   'salary:payment:added', 'salary:payment:updated', 'salary:payment:deleted',
-                  'advance:added', 'advance:deleted'];
+                  'advance:added', 'advance:updated', 'advance:deleted',
+                  'capital:added', 'capital:updated', 'capital:deleted'];
   events.forEach(ev => socket.on(ev, () => {
     // Always invalidate dashboard & reports so labour expenses show even without attendance
     sectionLoaded['admin-dashboard'] = false;
@@ -93,6 +94,7 @@ async function loadSection(id) {
     else if (id === 'admin-expenses') await loadAdminExpenses();
     else if (id === 'admin-bills') await loadAdminBills();
     else if (id === 'admin-salaries') await loadAdminSalaries();
+    else if (id === 'admin-capital') await loadAdminCapital();
     else if (id === 'admin-machines') await loadAdminMachines();
     else if (id === 'admin-workers') await loadAdminWorkers();
     else if (id === 'admin-reports') await loadAdminReports();
@@ -154,13 +156,14 @@ async function loadDashboardRange() {
       content.innerHTML = `
         <div class="stats-grid">
           ${renderStat('👷', `${report.attendance.present}/${report.attendance.total}`, 'Present / Total')}
+          ${renderStat('🏦', formatMoney(report.capital?.total||0), 'Capital')}
           ${renderStat('💰', formatMoney(report.expenses.total), 'Total Expenses')}
           ${renderStat('👷‍♂️', formatMoney(report.expenses.laborExpense||0), 'Labour')}
           ${renderStat('📄', formatMoney(report.pending||0), 'Pending (Udhar)')}
           ${renderStat('📋', report.jobs.total + (report.bills?.total||0), 'Jobs/Bills')}
-          ${renderStat('📈', formatMoney(report.profit), 'Profit')}
+          ${renderStat('📈', formatMoney(report.profit), 'Profit (+Capital)')}
         </div>
-        <div style="text-align:center;color:#666;font-size:12px;margin-bottom:12px">Showing ${formatDate(from)} (Labour included even without attendance)</div>
+        <div style="text-align:center;color:#666;font-size:12px;margin-bottom:12px">Showing ${formatDate(from)} - Profit includes Capital + Income - Expenses (Labour included even without attendance)</div>
         ${report.bills?.records?.length ? `<div class="card"><div class="card-header"><h2>Pending Bills (Udhar)</h2></div>${renderTable(['Bill #','Customer','Total','Received','Pending'], report.bills.records.filter(b=>b.pending_amount>0).map(b=>`<tr><td>${b.bill_number}</td><td>${b.customer_name}</td><td>${formatMoney(b.total_amount)}</td><td>${formatMoney(b.received_amount)}</td><td style="color:#c62828">${formatMoney(b.pending_amount)}</td></tr>`), 'No pending bills')}</div>` : ''}
         ${report.expenses.laborRecords?.length ? `<div class="card"><div class="card-header"><h2>👷‍♂️ Labour Expenses - Records with Proof</h2></div>${renderTable(['Date','Type','Worker','Amount','Proof'], report.expenses.laborRecords.map(r=>`<tr><td>${formatDate(r.date)}</td><td><span class="badge badge-${r.type==='Advance'?'warning':'present'}">${r.type}</span></td><td>${r.worker||'-'}</td><td>${formatMoney(r.amount)}</td><td>${r.proof ? `<a href="${r.proof}" target="_blank" class="btn btn-sm btn-primary">View Proof</a>` : '-'}</td></tr>`), 'No labour expenses')}</div>` : ''}
         <div class="card"><div class="card-header"><h2>Recent Jobs - ${formatDate(from)}</h2></div>
@@ -172,15 +175,16 @@ async function loadDashboardRange() {
       report = await apiCall(`/api/reports/range?from=${from}&to=${to}`);
       content.innerHTML = `
         <div class="stats-grid">
-          ${renderStat('💰', formatMoney(report.totalIncome), 'Total Income')}
+          ${renderStat('🏦', formatMoney(report.capitalTotal||0), 'Capital')}
+          ${renderStat('💰', formatMoney(report.totalIncome), 'Total Income (+Capital)')}
           ${renderStat('💸', formatMoney(report.totalExpense), 'Total Expenses')}
-          ${renderStat('👷‍♂️', formatMoney(report.laborExpense||0), 'Labour ('+from+' to '+to+')')}
+          ${renderStat('👷‍♂️', formatMoney(report.laborExpense||0), 'Labour')}
           ${renderStat('📄', formatMoney(report.billsPending||0), 'Pending (Udhar)')}
           ${renderStat('📋', (report.jobs_count||0)+(report.bills_count||0), 'Jobs/Bills')}
           ${renderStat('📈', formatMoney(report.profit), 'Profit')}
         </div>
-        <div style="text-align:center;color:#666;font-size:12px;margin-bottom:12px">Showing ${formatDate(from)} to ${formatDate(to)} - All profit/expenses including labour advances</div>
-        <div class="card"><h3 style="margin-bottom:10px">Expense Breakdown</h3>${report.expenses.map(e => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee"><span>${e.category}</span><strong>${formatMoney(e.total)}</strong></div>`).join('')}<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #1a237e;margin-top:8px"><span><strong>Labour (Salary+Advance)</strong></span><strong>${formatMoney(report.laborExpense||0)}</strong></div></div>`;
+        <div style="text-align:center;color:#666;font-size:12px;margin-bottom:12px">Showing ${formatDate(from)} to ${formatDate(to)} - Profit = (Income + Capital) - Expenses (Labour included)</div>
+        <div class="card"><h3 style="margin-bottom:10px">Expense Breakdown</h3>${report.expenses.map(e => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee"><span>${e.category}</span><strong>${formatMoney(e.total)}</strong></div>`).join('')}<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #1a237e;margin-top:8px"><span><strong>Labour (Salary+Advance)</strong></span><strong>${formatMoney(report.laborExpense||0)}</strong></div><div style="display:flex;justify-content:space-between;padding:8px 0;"><span><strong>Capital</strong></span><strong style="color:#2e7d32">${formatMoney(report.capitalTotal||0)}</strong></div></div>`;
     }
   } catch(e) { content.innerHTML = `<p style="color:red">Error: ${e.message}</p>`; }
 }
@@ -722,6 +726,75 @@ async function updateBill(e, id) {
 async function deleteBill(id) {
   if (!confirm('Delete this bill? All payments will also be deleted.')) return;
   try { await apiCall('/api/bills/' + id, { method: 'DELETE' }); showToast('Bill deleted'); sectionLoaded[activeSection]=false; loadSection(activeSection); } catch(e) { showToast('Error: '+e.message); }
+}
+
+async function loadAdminCapital() {
+  const el = document.getElementById('admin-capital');
+  try {
+    const capitals = await apiCall('/api/capital');
+    const total = capitals.reduce((s,c)=>s+(c.amount||0),0);
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header"><h2>🏦 Capital / Opening Balance - Total: ${formatMoney(total)} (adds to Profit)</h2><button class="btn btn-primary btn-sm" onclick="showAddCapital()">+ Add Capital</button></div>
+        <div class="filter-bar">
+          <div class="form-group"><label>From</label><input type="date" id="cap-from" value="${new Date(new Date().getFullYear(),0,1).toISOString().split('T')[0]}"></div>
+          <div class="form-group"><label>To</label><input type="date" id="cap-to" value="${today()}"></div>
+          <button class="btn btn-primary btn-sm" onclick="filterCapital()">Filter</button>
+        </div>
+        ${renderTable(['Date','Amount','Source','Description','Added By','Actions'], capitals.map(c=>`<tr><td>${formatDate(c.date)}</td><td>${formatMoney(c.amount)}</td><td>${c.source||'-'}</td><td>${c.description||'-'}</td><td>${c.added_by_name||'-'}</td><td><button class="btn btn-sm btn-primary" onclick='editCapital(${JSON.stringify(c).replace(/'/g,"&#39;")})'>Edit</button> <button class="btn btn-sm btn-danger" onclick="deleteCapital(${c.id})">Delete</button></td></tr>`), 'No capital entries - add how much money you had')}
+        <small style="color:#666">Capital amount is added to Profit (Income). Add your opening balance or investments here.</small>
+      </div>`;
+  } catch(e) { el.innerHTML = `<div class="card"><p style="color:red">Error: ${e.message}</p></div>`; }
+}
+
+async function filterCapital() {
+  const from = document.getElementById('cap-from').value;
+  const to = document.getElementById('cap-to').value;
+  const capitals = await apiCall(`/api/capital?from=${from}&to=${to}`);
+  document.querySelector('#admin-capital .table-container tbody').innerHTML = capitals.map(c=>`<tr><td>${formatDate(c.date)}</td><td>${formatMoney(c.amount)}</td><td>${c.source||'-'}</td><td>${c.description||'-'}</td><td>${c.added_by_name||'-'}</td><td><button class="btn btn-sm btn-primary" onclick='editCapital(${JSON.stringify(c).replace(/'/g,"&#39;")})'>Edit</button> <button class="btn btn-sm btn-danger" onclick="deleteCapital(${c.id})">Delete</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty-state">No capital in this period</td></tr>';
+}
+
+function showAddCapital() {
+  showModal('Add Capital', `
+    <form onsubmit="submitCapital(event)">
+      <div class="form-row">
+        <div class="form-group"><label>Date</label><input type="date" id="cap-date" value="${today()}" required></div>
+        <div class="form-group"><label>Amount (₹)</label><input type="number" id="cap-amount" required min="0.01" step="0.01" placeholder="e.g. 50000"></div>
+      </div>
+      <div class="form-group"><label>Source</label><input type="text" id="cap-source" placeholder="e.g. Opening Balance, Investment, Loan"></div>
+      <div class="form-group"><label>Description</label><input type="text" id="cap-desc" placeholder="Optional notes"></div>
+      <div class="modal-actions"><button type="submit" class="btn btn-primary">Add to Profit</button></div>
+    </form>`);
+}
+
+async function submitCapital(e) {
+  e.preventDefault();
+  const data = { date: document.getElementById('cap-date').value, amount: parseFloat(document.getElementById('cap-amount').value), source: document.getElementById('cap-source').value, description: document.getElementById('cap-desc').value };
+  try { await apiCall('/api/capital', { method: 'POST', body: JSON.stringify(data) }); showToast('Capital added - profit updated!'); document.querySelector('.modal-overlay').remove(); sectionLoaded['admin-capital']=false; sectionLoaded['admin-dashboard']=false; loadSection('admin-capital'); } catch(err) { showToast('Error: '+err.message); }
+}
+
+function editCapital(c) {
+  showModal('Edit Capital', `
+    <form onsubmit="updateCapital(event, ${c.id})">
+      <div class="form-row">
+        <div class="form-group"><label>Date</label><input type="date" id="cap-date" value="${c.date}" required></div>
+        <div class="form-group"><label>Amount (₹)</label><input type="number" id="cap-amount" value="${c.amount}" required min="0.01" step="0.01"></div>
+      </div>
+      <div class="form-group"><label>Source</label><input type="text" id="cap-source" value="${c.source||''}"></div>
+      <div class="form-group"><label>Description</label><input type="text" id="cap-desc" value="${c.description||''}"></div>
+      <div class="modal-actions"><button type="submit" class="btn btn-primary">Update</button></div>
+    </form>`);
+}
+
+async function updateCapital(e, id) {
+  e.preventDefault();
+  const data = { date: document.getElementById('cap-date').value, amount: parseFloat(document.getElementById('cap-amount').value), source: document.getElementById('cap-source').value, description: document.getElementById('cap-desc').value };
+  try { await apiCall('/api/capital/' + id, { method: 'PUT', body: JSON.stringify(data) }); showToast('Capital updated - profit updated!'); document.querySelector('.modal-overlay').remove(); sectionLoaded['admin-capital']=false; sectionLoaded['admin-dashboard']=false; loadSection('admin-capital'); } catch(err) { showToast('Error: '+err.message); }
+}
+
+async function deleteCapital(id) {
+  if (!confirm('Delete this capital entry? Profit will be reduced.')) return;
+  try { await apiCall('/api/capital/' + id, { method: 'DELETE' }); showToast('Deleted'); sectionLoaded['admin-capital']=false; sectionLoaded['admin-dashboard']=false; loadSection('admin-capital'); } catch(e) { showToast('Error: '+e.message); }
 }
 
 async function viewBill(id) {

@@ -162,6 +162,16 @@ async function getDb() {
     FOREIGN KEY (worker_id) REFERENCES workers(id)
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS capital (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    source TEXT,
+    description TEXT,
+    added_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
   db.run(`CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
