@@ -1,3 +1,45 @@
+const i18n = {
+  en: {
+    dashboard: 'Dashboard', attendance: 'Attendance', expenses: 'Expenses', bills: 'Bills', salaries: 'Salaries', capital: 'Capital', machines: 'Machines', workers: 'Workers', reports: 'Reports', backup: 'Backup',
+    logout: 'Logout', present: 'Present', total: 'Total', profit: 'Profit', labour: 'Labour', pending: 'Pending (Udhar)', jobsBills: 'Jobs/Bills', totalExpenses: 'Total Expenses', capitalLabel: 'Capital', machinesLabel: 'Machines', recentJobs: 'Recent Jobs', presentTotal: 'Present / Total', expensesToday: 'Expenses Today', labourToday: 'Labour Today', profitToday: 'Profit Today', jobsToday: 'Jobs Today', autoPresentOn: 'Auto Present ON - Every labour auto-marked present', autoPresentOff: 'Auto Present OFF - Attendance stopped', markAllPresent: 'Auto Present All Labour Today', attendanceRecords: 'Records', salaryConfig: 'Salary Config (Per-Day Rates)', salaryPayments: 'Salary Payments', labourRecords: 'Labour Expenses Records (Every payment saved with proof)', capitalTitle: 'Capital / Opening Balance', addCapital: 'Add Capital', edit: 'Edit', delete: 'Delete', view: 'View', payment: 'Payment', add: 'Add', save: 'Save', cancel: 'Cancel', update: 'Update', search: 'Search', from: 'From', to: 'To', show: 'Show', allTime: 'All Time', refresh: 'Refresh', addWorker: 'Add Worker', setRate: 'Set Rate', recordPayment: 'Record Payment', giveAdvance: 'Give Advance', proof: 'Proof', amount: 'Amount', date: 'Date', customer: 'Customer', phone: 'Phone', machine: 'Machine', total: 'Total', received: 'Received', status: 'Status', actions: 'Actions', worker: 'Worker', type: 'Type', notes: 'Notes', description: 'Description', source: 'Source', addedBy: 'Added By', effectiveFrom: 'Effective From', perDayRate: 'Per Day Rate', monthlyFixed: 'Monthly Fixed', days: 'Days', gross: 'Gross', paid: 'Paid', advance: 'Advance', pending: 'Pending', role: 'Role', name: 'Name'
+  },
+  hi: {
+    dashboard: 'डैशबोर्ड', attendance: 'उपस्थिति', expenses: 'खर्च', bills: 'बिल', salaries: 'वेतन', capital: 'पूंजी', machines: 'मशीनें', workers: 'कर्मचारी', reports: 'रिपोर्ट', backup: 'बैकअप',
+    logout: 'लॉगआउट', present: 'उपस्थित', total: 'कुल', profit: 'लाभ', labour: 'मजदूरी', pending: 'उधारी', jobsBills: 'काम/बिल', totalExpenses: 'कुल खर्च', capitalLabel: 'पूंजी', machinesLabel: 'मशीनें', recentJobs: 'हाल के काम', presentTotal: 'उपस्थित / कुल', expensesToday: 'आज का खर्च', labourToday: 'आज की मजदूरी', profitToday: 'आज का लाभ', jobsToday: 'आज के काम', autoPresentOn: 'ऑटो हाजिरी चालू - हर मजदूर ऑटो हाजिर', autoPresentOff: 'ऑटो हाजिरी बंद - हाजिरी रुकी', markAllPresent: 'सभी मजदूरों को हाजिर करो', attendanceRecords: 'रिकॉर्ड', salaryConfig: 'वेतन सेटिंग', salaryPayments: 'वेतन भुगतान', labourRecords: 'मजदूरी खर्च रिकॉर्ड', capitalTitle: 'पूंजी / प्रारंभिक राशि', addCapital: 'पूंजी जोड़ें', edit: 'संपादित', delete: 'हटाएं', view: 'देखें', payment: 'भुगतान', add: 'जोड़ें', save: 'सेव करें', cancel: 'रद्द करें', update: 'अपडेट', search: 'खोजें', from: 'से', to: 'तक', show: 'दिखाएं', allTime: 'सभी समय', refresh: 'रिफ्रेश', addWorker: 'कर्मचारी जोड़ें', setRate: 'दर सेट करें', recordPayment: 'भुगतान रिकॉर्ड', giveAdvance: 'एडवांस दें', proof: 'प्रमाण', amount: 'राशि', date: 'तारीख', customer: 'ग्राहक', phone: 'फोन', machine: 'मशीन', total: 'कुल', received: 'प्राप्त', status: 'स्थिति', actions: 'कार्रवाई', worker: 'कर्मचारी', type: 'प्रकार', notes: 'नोट्स', description: 'विवरण', source: 'स्रोत', addedBy: 'जोड़ा गया', effectiveFrom: 'लागू तिथि', perDayRate: 'प्रतिदिन दर', monthlyFixed: 'मासिक', days: 'दिन', gross: 'कुल', paid: 'भुगतान', advance: 'एडवांस', pending: 'बकाया', role: 'भूमिका', name: 'नाम'
+  }
+};
+let currentLang = localStorage.getItem('borwell_lang') || 'en';
+function t(k) { return (i18n[currentLang] && i18n[currentLang][k]) || (i18n.en[k] || k); }
+function setLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem('borwell_lang', lang);
+  document.querySelectorAll('#lang-select, #lang-select-mgr').forEach(s => s.value = lang);
+  document.documentElement.lang = lang;
+  applyTranslations();
+  // Re-render current section to apply language
+  if (activeSection) { sectionLoaded[activeSection] = false; loadSection(activeSection); }
+  showToast(lang === 'hi' ? 'भाषा हिन्दी में बदली' : 'Language changed to English');
+}
+function applyTranslations() {
+  // Sidebar - Admin
+  const map = {
+    'admin-dashboard': 'dashboard', 'admin-attendance': 'attendance', 'admin-expenses': 'expenses', 'admin-bills': 'bills',
+    'admin-salaries': 'salaries', 'admin-capital': 'capital', 'admin-machines': 'machines', 'admin-workers': 'workers',
+    'admin-reports': 'reports', 'admin-backup': 'backup',
+    'manager-dashboard': 'dashboard', 'manager-attendance': 'attendance', 'manager-expenses': 'expenses'
+  };
+  document.querySelectorAll('.sidebar .nav-link').forEach(a => {
+    const sec = a.getAttribute('data-section');
+    const key = map[sec];
+    if (key) {
+      const icon = a.textContent.trim().split(' ')[0];
+      a.textContent = icon + ' ' + t(key);
+    }
+  });
+  // Logout buttons
+  document.querySelectorAll('.nav-user .btn').forEach(b => { if (b.textContent.trim() === 'Logout' || b.textContent.trim() === 'लॉगआउट') b.textContent = t('logout'); });
+}
+
 let socket = null;
 let activeSection = 'admin-dashboard';
 
@@ -1327,6 +1369,11 @@ function logout() {
 }
 
 window.addEventListener('load', () => {
+  // Apply saved language (English default)
+  currentLang = localStorage.getItem('borwell_lang') || 'en';
+  document.querySelectorAll('#lang-select, #lang-select-mgr').forEach(s => s.value = currentLang);
+  document.documentElement.lang = currentLang;
+  applyTranslations();
   const saved = localStorage.getItem('borwell_user');
   const token = localStorage.getItem('borwell_token');
   if (saved && token) { currentUser = JSON.parse(saved); authToken = token; showDashboard(currentUser); }

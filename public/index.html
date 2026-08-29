@@ -44,6 +44,10 @@
         <div class="nav-brand">⚙️ Borwell Manager</div>
         <button class="nav-toggle" onclick="toggleSidebar()">☰</button>
         <div class="nav-user">
+          <select id="lang-select" onchange="setLanguage(this.value)" style="padding:4px 8px;border-radius:4px;border:none;background:white;color:#1a237e;font-weight:600;cursor:pointer">
+            <option value="en">English</option>
+            <option value="hi">हिन्दी</option>
+          </select>
           <span id="admin-username"></span>
           <button class="btn btn-sm" onclick="logout()">Logout</button>
         </div>
@@ -81,6 +85,10 @@
         <div class="nav-brand">⚙️ Borwell Manager</div>
         <button class="nav-toggle" onclick="toggleSidebar()">☰</button>
         <div class="nav-user">
+          <select id="lang-select-mgr" onchange="setLanguage(this.value)" style="padding:4px 8px;border-radius:4px;border:none;background:white;color:#1a237e;font-weight:600;cursor:pointer">
+            <option value="en">English</option>
+            <option value="hi">हिन्दी</option>
+          </select>
           <span id="manager-username"></span>
           <button class="btn btn-sm" onclick="logout()">Logout</button>
         </div>
