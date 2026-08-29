@@ -38,6 +38,18 @@ router.post('/', auth, upload.single('attachment'), (req, res) => {
   res.json({ id: result.lastInsertRowid, message: 'Advance recorded' });
 });
 
+router.put('/:id', auth, upload.single('attachment'), (req, res) => {
+  const { worker_id, amount, date, notes } = req.body;
+  const attachment = req.file ? toBase64(req.file) : undefined;
+  if (attachment !== undefined) {
+    runQuery('UPDATE advances SET worker_id=?, amount=?, date=?, notes=?, attachment=? WHERE id=?', [worker_id, amount, date, notes, attachment, req.params.id]);
+  } else {
+    runQuery('UPDATE advances SET worker_id=?, amount=?, date=?, notes=? WHERE id=?', [worker_id, amount, date, notes, req.params.id]);
+  }
+  if (req.app.get('broadcast')) req.app.get('broadcast')('advance:updated', { id: req.params.id });
+  res.json({ message: 'Advance updated' });
+});
+
 router.delete('/:id', auth, (req, res) => {
   runQuery('DELETE FROM advances WHERE id = ?', [req.params.id]);
   if (req.app.get('broadcast')) req.app.get('broadcast')('advance:deleted', { id: req.params.id });

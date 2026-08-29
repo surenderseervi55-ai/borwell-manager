@@ -449,7 +449,7 @@ async function loadAdminWorkers() {
           return `<tr><td>${w.name}</td><td>${w.phone||'-'}</td><td>${w.role}</td><td>${w.machine_name||'-'}</td><td>${cfg ? formatMoney(cfg.per_day_rate) : '-'}</td><td>${salaryInfo}</td><td>${renderBadge(w.active?'active':'absent')}</td>
           <td>
             <button class="btn btn-sm btn-primary" onclick='editWorker(${JSON.stringify(w).replace(/'/g,"&#39;")})'>Edit</button>
-            ${cfg ? `<button class="btn btn-sm btn-warning" onclick='editSalaryConfig(${JSON.stringify(cfg).replace(/'/g,"&#39;")})'>Salary</button>` : `<button class="btn btn-sm btn-success" onclick='showSalaryConfig(${w.id})'>+Salary</button>`}
+            ${cfg ? `<button class="btn btn-sm btn-warning" onclick='editSalaryConfig(${JSON.stringify(cfg).replace(/'/g,"&#39;")})'>Edit Salary</button> <button class="btn btn-sm btn-danger" onclick='deleteSalaryConfig(${cfg.id})'>Del</button>` : `<button class="btn btn-sm btn-success" onclick='showSalaryConfig(${w.id})'>+Salary</button>`}
             <button class="btn btn-sm btn-warning" onclick='showAdvance(${w.id})'>Advance</button>
             <button class="btn btn-sm btn-success" onclick='showSalaryPayment(${w.id})'>Pay</button>
           </td></tr>`;
@@ -856,6 +856,55 @@ async function submitAdvance(e, workerId) {
   } catch (err) { showToast('Error: ' + err.message); }
 }
 
+async function deleteSalaryConfig(id) {
+  if (!confirm('Delete this salary config?')) return;
+  try { await apiCall('/api/salaries/' + id, { method: 'DELETE' }); showToast('Deleted'); sectionLoaded[activeSection]=false; loadSection(activeSection); } catch(e) { showToast('Error: '+e.message); }
+}
+
+let _editingAdvance = null;
+function editAdvance(adv) {
+  _editingAdvance = adv;
+  showModal('Edit Advance', `
+    <form onsubmit="updateAdvance(event, ${adv.id})">
+      <div class="form-row">
+        <div class="form-group"><label>Amount (₹)</label><input type="number" id="adv-amount" value="${adv.amount}" required min="1" step="0.01"></div>
+        <div class="form-group"><label>Date</label><input type="date" id="adv-date" value="${adv.date}" required></div>
+      </div>
+      <div class="form-group"><label>Notes</label><input type="text" id="adv-notes" value="${adv.notes||''}"></div>
+      ${adv.attachment ? `<div class="form-group"><label>Current Proof</label><div><a href="${adv.attachment}" target="_blank" class="btn btn-sm btn-primary">View</a></div></div>` : ''}
+      <div class="form-group"><label>New Proof (optional)</label><input type="file" id="adv-attachment" accept="image/*,application/pdf"></div>
+      <div class="modal-actions"><button type="submit" class="btn btn-primary">Update</button></div>
+    </form>`);
+}
+
+async function updateAdvance(e, id) {
+  e.preventDefault();
+  const formData = new FormData();
+  formData.append('worker_id', _editingAdvance.worker_id);
+  formData.append('amount', document.getElementById('adv-amount').value);
+  formData.append('date', document.getElementById('adv-date').value);
+  formData.append('notes', document.getElementById('adv-notes').value);
+  const file = document.getElementById('adv-attachment').files[0];
+  if (file) formData.append('attachment', file);
+  try {
+    const res = await fetch('/api/advances/' + id, { method: 'PUT', headers: { 'Authorization': `Bearer ${authToken}` }, body: formData });
+    if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed'); }
+    showToast('Advance updated');
+    document.querySelector('.modal-overlay').remove();
+    sectionLoaded[activeSection]=false; loadSection(activeSection);
+  } catch(err) { showToast('Error: '+err.message); }
+}
+
+async function deleteAdvance(id) {
+  if (!confirm('Delete this advance? Money will be added back to pending salary.')) return;
+  try { await apiCall('/api/advances/' + id, { method: 'DELETE' }); showToast('Advance deleted'); sectionLoaded[activeSection]=false; loadSection(activeSection); } catch(e) { showToast('Error: '+e.message); }
+}
+
+async function deleteSalaryPayment(id) {
+  if (!confirm('Delete this salary payment?')) return;
+  try { await apiCall('/api/salary-payments/' + id, { method: 'DELETE' }); showToast('Deleted'); sectionLoaded[activeSection]=false; loadSection(activeSection); } catch(e) { showToast('Error: '+e.message); }
+}
+
 function showSalaryPayment(workerId) {
   showModal('Record Salary Payment', `
     <form onsubmit="submitSalaryPayment(event${workerId ? ', ' + workerId : ''})">
@@ -911,18 +960,30 @@ async function submitSalaryPayment(e, existingWorkerId) {
   } catch (err) { showToast('Error: ' + err.message); }
 }
 
-// Labour Expenses Full Log
+// Labour Expenses Full Log - every record with Edit/Delete
 async function loadLabourExpensesLog() {
   const el = document.getElementById('labour-expenses-log');
   if (!el) return;
   try {
     const [advances, salaries] = await Promise.all([apiCall('/api/advances'), apiCall('/api/salary-payments')]);
+    // Keep raw for edit
+    window._allAdvances = advances;
+    window._allSalaries = salaries;
     const all = [
-      ...advances.map(a => ({ date: a.date, type: 'Advance', worker: a.worker_name, amount: a.amount, notes: a.notes, proof: a.attachment, id: a.id })),
-      ...salaries.map(s => ({ date: s.payment_date, type: 'Salary', worker: s.worker_name, amount: s.net_paid, notes: s.notes, proof: s.attachment, id: s.id }))
+      ...advances.map(a => ({ raw: a, date: a.date, type: 'Advance', worker: a.worker_name, amount: a.amount, notes: a.notes, proof: a.attachment, id: a.id })),
+      ...salaries.map(s => ({ raw: s, date: s.payment_date, type: 'Salary', worker: s.worker_name, amount: s.net_paid, notes: s.notes, proof: s.attachment, id: s.id }))
     ].sort((a,b) => new Date(b.date) - new Date(a.date));
-    el.innerHTML = renderTable(['Date','Type','Worker','Amount','Notes','Proof'], all.map(r => `<tr><td>${formatDate(r.date)}</td><td><span class="badge badge-${r.type==='Advance'?'warning':'present'}">${r.type}</span></td><td>${r.worker}</td><td>${formatMoney(r.amount)}</td><td>${r.notes||'-'}</td><td>${r.proof ? `<a href="${r.proof}" target="_blank" class="btn btn-sm btn-primary">View</a>` : '-'}</td></tr>`), 'No labour expenses yet - every salary & advance saved here with proof');
+    el.innerHTML = renderTable(['Date','Type','Worker','Amount','Notes','Proof','Actions'], all.map(r => {
+      const editBtn = r.type === 'Advance' ? `<button class="btn btn-sm btn-primary" onclick='editAdvanceById(${r.id})'>Edit</button>` : `<button class="btn btn-sm btn-primary" onclick='alert("Edit salary via Workers page")'>Edit</button>`;
+      const delBtn = r.type === 'Advance' ? `<button class="btn btn-sm btn-danger" onclick='deleteAdvance(${r.id})'>Delete</button>` : `<button class="btn btn-sm btn-danger" onclick='deleteSalaryPayment(${r.id})'>Delete</button>`;
+      return `<tr><td>${formatDate(r.date)}</td><td><span class="badge badge-${r.type==='Advance'?'warning':'present'}">${r.type}</span></td><td>${r.worker}</td><td>${formatMoney(r.amount)}</td><td>${r.notes||'-'}</td><td>${r.proof ? `<a href="${r.proof}" target="_blank" class="btn btn-sm btn-primary">View</a>` : '-'}</td><td>${editBtn} ${delBtn}</td></tr>`;
+    }), 'No labour expenses yet - every salary & advance saved here with proof');
   } catch(e) { el.innerHTML = `<p style="color:red">Error: ${e.message}</p>`; }
+}
+
+function editAdvanceById(id) {
+  const adv = (window._allAdvances||[]).find(a=>a.id===id);
+  if (adv) editAdvance(adv);
 }
 
 async function loadAdminReports() {

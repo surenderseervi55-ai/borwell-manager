@@ -70,10 +70,15 @@ router.post('/', auth, upload.single('attachment'), (req, res) => {
   res.json({ id: result.lastInsertRowid, message: 'Salary payment recorded' });
 });
 
-router.put('/:id', auth, (req, res) => {
+router.put('/:id', auth, upload.single('attachment'), (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   const { worker_id, salary_period_from, salary_period_to, days_worked, gross_salary, advance_deducted, net_paid, payment_date, payment_mode, notes } = req.body;
-  runQuery('UPDATE salary_payments SET worker_id=?, salary_period_from=?, salary_period_to=?, days_worked=?, gross_salary=?, advance_deducted=?, net_paid=?, payment_date=?, payment_mode=?, notes=? WHERE id=?', [worker_id, salary_period_from, salary_period_to, days_worked, gross_salary, advance_deducted, net_paid, payment_date, payment_mode, notes, req.params.id]);
+  const attachment = req.file ? toBase64(req.file) : undefined;
+  if (attachment !== undefined) {
+    runQuery('UPDATE salary_payments SET worker_id=?, salary_period_from=?, salary_period_to=?, days_worked=?, gross_salary=?, advance_deducted=?, net_paid=?, payment_date=?, payment_mode=?, notes=?, attachment=? WHERE id=?', [worker_id, salary_period_from, salary_period_to, days_worked, gross_salary, advance_deducted, net_paid, payment_date, payment_mode, notes, attachment, req.params.id]);
+  } else {
+    runQuery('UPDATE salary_payments SET worker_id=?, salary_period_from=?, salary_period_to=?, days_worked=?, gross_salary=?, advance_deducted=?, net_paid=?, payment_date=?, payment_mode=?, notes=? WHERE id=?', [worker_id, salary_period_from, salary_period_to, days_worked, gross_salary, advance_deducted, net_paid, payment_date, payment_mode, notes, req.params.id]);
+  }
   if (req.app.get('broadcast')) req.app.get('broadcast')('salary:payment:updated', { id: req.params.id });
   res.json({ message: 'Salary payment updated' });
 });
