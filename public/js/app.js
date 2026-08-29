@@ -118,32 +118,77 @@ function renderBadge(status) {
 async function loadAdminDashboard() {
   const el = document.getElementById('admin-dashboard');
   try {
-    const report = await apiCall(`/api/reports/daily?date=${today()}`);
     const machines = await apiCall('/api/machines');
     el.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-        <h2>Dashboard - ${formatDate(today())}</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <h2>Dashboard</h2>
         <button class="btn btn-primary btn-sm" onclick="refreshAll()">Refresh</button>
       </div>
-      <div class="stats-grid">
-        ${renderStat('👷', `${report.attendance.present}/${report.attendance.total}`, 'Present / Total')}
-        ${renderStat('💰', formatMoney(report.expenses.total), 'Total Expenses')}
-        ${renderStat('👷‍♂️', formatMoney(report.expenses.laborExpense||0), 'Labour Today')}
-        ${renderStat('📄', formatMoney(report.pending||0), 'Pending (Udhar)')}
-        ${renderStat('📋', report.jobs.total + (report.bills?.total||0), 'Jobs/Bills Today')}
-        ${renderStat('📈', formatMoney(report.profit), 'Profit Today')}
+      <div class="card" style="padding:16px">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
+          <div class="form-group" style="margin:0"><label>From</label><input type="date" id="dash-from" value="${today()}"></div>
+          <div class="form-group" style="margin:0"><label>To</label><input type="date" id="dash-to" value="${today()}"></div>
+          <button class="btn btn-primary" onclick="loadDashboardRange()">Show</button>
+          <button class="btn" onclick="loadDashboardRangeAll()" style="background:#e0e0e0">All Time</button>
+        </div>
+        <small style="color:#666">Select dates to see profit/expenses for that period. Labour advances included even without attendance.</small>
       </div>
-      ${report.bills?.records?.length ? `<div class="card"><div class="card-header"><h2>Pending Bills (Udhar)</h2></div>${renderTable(['Bill #','Customer','Total','Received','Pending'], report.bills.records.filter(b=>b.pending_amount>0).map(b=>`<tr><td>${b.bill_number}</td><td>${b.customer_name}</td><td>${formatMoney(b.total_amount)}</td><td>${formatMoney(b.received_amount)}</td><td style="color:#c62828">${formatMoney(b.pending_amount)}</td></tr>`), 'No pending bills')}</div>` : ''}
-      ${report.expenses.laborRecords?.length ? `<div class="card"><div class="card-header"><h2>👷‍♂️ Labour Expenses Today - Records with Proof</h2></div>${renderTable(['Date','Type','Worker','Amount','Proof'], report.expenses.laborRecords.map(r=>`<tr><td>${formatDate(r.date)}</td><td><span class="badge badge-${r.type==='Advance'?'warning':'present'}">${r.type}</span></td><td>${r.worker||'-'}</td><td>${formatMoney(r.amount)}</td><td>${r.proof ? `<a href="${r.proof}" target="_blank" class="btn btn-sm btn-primary">View Proof</a>` : '-'}</td></tr>`), 'No labour expenses today')}</div>` : ''}
+      <div id="dashboard-content">Loading...</div>
       <div class="card"><div class="card-header"><h2>Machines</h2></div>
         <div class="stats-grid">${machines.map(m => renderStat('🔧', m.name, m.status)).join('')}</div>
-      </div>
-      <div class="card"><div class="card-header"><h2>Recent Jobs</h2></div>
-        ${renderTable(['Date','Machine','Customer','Location','Amount'], report.jobs.records.map(j =>
-          `<tr><td>${formatDate(j.date)}</td><td>${j.machine_name}</td><td>${j.customer_name}</td><td>${j.location}</td><td>${formatMoney(j.amount)}</td></tr>`
-        ), 'No jobs today')}
       </div>`;
+    loadDashboardRange();
   } catch (err) { el.innerHTML = '<div class="empty-state"><p>Loading...</p></div>'; }
+}
+
+async function loadDashboardRange() {
+  const from = document.getElementById('dash-from')?.value || today();
+  const to = document.getElementById('dash-to')?.value || today();
+  const content = document.getElementById('dashboard-content');
+  if (!content) return;
+  content.innerHTML = 'Loading...';
+  try {
+    let report;
+    if (from === to) {
+      report = await apiCall(`/api/reports/daily?date=${from}`);
+      content.innerHTML = `
+        <div class="stats-grid">
+          ${renderStat('👷', `${report.attendance.present}/${report.attendance.total}`, 'Present / Total')}
+          ${renderStat('💰', formatMoney(report.expenses.total), 'Total Expenses')}
+          ${renderStat('👷‍♂️', formatMoney(report.expenses.laborExpense||0), 'Labour')}
+          ${renderStat('📄', formatMoney(report.pending||0), 'Pending (Udhar)')}
+          ${renderStat('📋', report.jobs.total + (report.bills?.total||0), 'Jobs/Bills')}
+          ${renderStat('📈', formatMoney(report.profit), 'Profit')}
+        </div>
+        <div style="text-align:center;color:#666;font-size:12px;margin-bottom:12px">Showing ${formatDate(from)} (Labour included even without attendance)</div>
+        ${report.bills?.records?.length ? `<div class="card"><div class="card-header"><h2>Pending Bills (Udhar)</h2></div>${renderTable(['Bill #','Customer','Total','Received','Pending'], report.bills.records.filter(b=>b.pending_amount>0).map(b=>`<tr><td>${b.bill_number}</td><td>${b.customer_name}</td><td>${formatMoney(b.total_amount)}</td><td>${formatMoney(b.received_amount)}</td><td style="color:#c62828">${formatMoney(b.pending_amount)}</td></tr>`), 'No pending bills')}</div>` : ''}
+        ${report.expenses.laborRecords?.length ? `<div class="card"><div class="card-header"><h2>👷‍♂️ Labour Expenses - Records with Proof</h2></div>${renderTable(['Date','Type','Worker','Amount','Proof'], report.expenses.laborRecords.map(r=>`<tr><td>${formatDate(r.date)}</td><td><span class="badge badge-${r.type==='Advance'?'warning':'present'}">${r.type}</span></td><td>${r.worker||'-'}</td><td>${formatMoney(r.amount)}</td><td>${r.proof ? `<a href="${r.proof}" target="_blank" class="btn btn-sm btn-primary">View Proof</a>` : '-'}</td></tr>`), 'No labour expenses')}</div>` : ''}
+        <div class="card"><div class="card-header"><h2>Recent Jobs - ${formatDate(from)}</h2></div>
+          ${renderTable(['Date','Machine','Customer','Location','Amount'], report.jobs.records.map(j =>
+            `<tr><td>${formatDate(j.date)}</td><td>${j.machine_name}</td><td>${j.customer_name}</td><td>${j.location}</td><td>${formatMoney(j.amount)}</td></tr>`
+          ), 'No jobs')}
+        </div>`;
+    } else {
+      report = await apiCall(`/api/reports/range?from=${from}&to=${to}`);
+      content.innerHTML = `
+        <div class="stats-grid">
+          ${renderStat('💰', formatMoney(report.totalIncome), 'Total Income')}
+          ${renderStat('💸', formatMoney(report.totalExpense), 'Total Expenses')}
+          ${renderStat('👷‍♂️', formatMoney(report.laborExpense||0), 'Labour ('+from+' to '+to+')')}
+          ${renderStat('📄', formatMoney(report.billsPending||0), 'Pending (Udhar)')}
+          ${renderStat('📋', (report.jobs_count||0)+(report.bills_count||0), 'Jobs/Bills')}
+          ${renderStat('📈', formatMoney(report.profit), 'Profit')}
+        </div>
+        <div style="text-align:center;color:#666;font-size:12px;margin-bottom:12px">Showing ${formatDate(from)} to ${formatDate(to)} - All profit/expenses including labour advances</div>
+        <div class="card"><h3 style="margin-bottom:10px">Expense Breakdown</h3>${report.expenses.map(e => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee"><span>${e.category}</span><strong>${formatMoney(e.total)}</strong></div>`).join('')}<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #1a237e;margin-top:8px"><span><strong>Labour (Salary+Advance)</strong></span><strong>${formatMoney(report.laborExpense||0)}</strong></div></div>`;
+    }
+  } catch(e) { content.innerHTML = `<p style="color:red">Error: ${e.message}</p>`; }
+}
+
+function loadDashboardRangeAll() {
+  document.getElementById('dash-from').value = '2020-01-01';
+  document.getElementById('dash-to').value = today();
+  loadDashboardRange();
 }
 
 function refreshAll() {

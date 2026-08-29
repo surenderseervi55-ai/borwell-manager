@@ -54,4 +54,20 @@ router.get('/monthly', auth, (req, res) => {
   res.json({ month: m, year: y, expenses, totalExpense, laborExpense: laborTotal, totalIncome, billsIncome, billsPending: billsMonthly?.total_pending || 0, profit: totalIncome - totalExpense, jobs_count: jobs?.total_jobs || 0, bills_count: billsMonthly?.count || 0, attendance });
 });
 
+router.get('/range', auth, (req, res) => {
+  const { from, to } = req.query;
+  if (!from || !to) return res.status(400).json({ error: 'from and to required (YYYY-MM-DD)' });
+  const expenses = getAll('SELECT category, SUM(amount) as total FROM expenses WHERE date BETWEEN ? AND ? GROUP BY category', [from, to]);
+  const jobs = getOne('SELECT SUM(amount) as total_income, COUNT(*) as total_jobs FROM jobs WHERE date BETWEEN ? AND ?', [from, to]);
+  const billsRange = getOne('SELECT SUM(received_amount) as total_received, SUM(pending_amount) as total_pending, COUNT(*) as count FROM bills WHERE date BETWEEN ? AND ?', [from, to]);
+  const salaryRange = getOne('SELECT SUM(net_paid) as total_paid, SUM(advance_deducted) as total_deducted FROM salary_payments WHERE payment_date BETWEEN ? AND ?', [from, to]);
+  const advancesRange = getOne('SELECT SUM(amount) as total_advance FROM advances WHERE date BETWEEN ? AND ?', [from, to]);
+  const attendance = getAll('SELECT status, COUNT(*) as count FROM attendance WHERE date BETWEEN ? AND ? GROUP BY status', [from, to]);
+  const laborTotal = (salaryRange?.total_paid || 0) + (salaryRange?.total_deducted || 0) + (advancesRange?.total_advance || 0);
+  const totalExpense = expenses.reduce((s, e) => s + (e.total || 0), 0) + laborTotal;
+  const totalIncome = (jobs?.total_income || 0) + (billsRange?.total_received || 0);
+  const totalPending = billsRange?.total_pending || 0;
+  res.json({ from, to, expenses, totalExpense, laborExpense: laborTotal, totalIncome, billsIncome: billsRange?.total_received || 0, billsPending: totalPending, profit: totalIncome - totalExpense, jobs_count: jobs?.total_jobs || 0, bills_count: billsRange?.count || 0, attendance, present: attendance.find(a=>a.status==='present')?.count||0 });
+});
+
 module.exports = router;
