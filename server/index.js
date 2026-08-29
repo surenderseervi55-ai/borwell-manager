@@ -101,7 +101,8 @@ initDb().then(() => {
           };
           const dataStr = JSON.stringify(data, null, 2);
           const filename = `borwell_autosave_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-          await drive.files.create({ resource: { name: filename, parents: [folderId] }, media: { mimeType: 'application/json', body: Buffer.from(dataStr) }, fields: 'id' });
+          const { Readable } = require('stream');
+          await drive.files.create({ resource: { name: filename, parents: [folderId] }, media: { mimeType: 'application/json', body: Readable.from([dataStr]) }, fields: 'id' });
           console.log('Auto-saved to Drive:', filename);
         } catch (e) { console.log('Auto Drive backup failed:', e.message); }
       } else {

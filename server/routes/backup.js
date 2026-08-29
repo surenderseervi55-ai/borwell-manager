@@ -47,7 +47,8 @@ router.post('/now', auth, async (req, res) => {
         const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
         const fileMetadata = { name: filename };
         if (folderId && folderId !== 'your_folder_id_here') fileMetadata.parents = [folderId];
-        const media = { mimeType: 'application/json', body: Buffer.from(dataStr) };
+        const { Readable } = require('stream');
+        const media = { mimeType: 'application/json', body: Readable.from([dataStr]) };
         const file = await drive.files.create({ resource: fileMetadata, media, fields: 'id, webViewLink' });
         return res.json({ message: 'Backup uploaded to Google Drive', fileId: file.data.id, link: file.data.webViewLink, size: dataStr.length });
       }
